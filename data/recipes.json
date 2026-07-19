@@ -1,0 +1,163 @@
+{
+  "categories": [
+    "Meats",
+    "Appetizers",
+    "Cocktails",
+    "Desserts",
+    "Vegetarian"
+  ],
+  "recipes": [
+    {
+      "slug": "demo-onion-pasta-sauce",
+      "title": "Quick Onion Pasta Sauce (Demo)",
+      "category": "Vegetarian",
+      "premium": false,
+      "description": "A sample recipe used to demo the player: step-by-step chapters, loop mode, and voice control. Swap in your own video and steps whenever you're ready.",
+      "video": "/videos/demo-recipe.mp4",
+      "thumbnail": "",
+      "steps": [
+        {
+          "id": 1,
+          "label": "Mince the onions",
+          "start": 0,
+          "end": 8
+        },
+        {
+          "id": 2,
+          "label": "Heat the pan",
+          "start": 8,
+          "end": 16
+        },
+        {
+          "id": 3,
+          "label": "Sauté the onions",
+          "start": 16,
+          "end": 24
+        },
+        {
+          "id": 4,
+          "label": "Add the garlic",
+          "start": 24,
+          "end": 32
+        },
+        {
+          "id": 5,
+          "label": "Simmer the sauce",
+          "start": 32,
+          "end": 40
+        }
+      ]
+    },
+    {
+      "slug": "coming-soon-steak",
+      "title": "Pan-Seared Steak",
+      "category": "Meats",
+      "premium": false,
+      "description": "Upload a video for this recipe to activate it.",
+      "video": null,
+      "thumbnail": "",
+      "steps": []
+    },
+    {
+      "slug": "coming-soon-wings",
+      "title": "Crispy Baked Wings",
+      "category": "Appetizers",
+      "premium": false,
+      "description": "Upload a video for this recipe to activate it.",
+      "video": null,
+      "thumbnail": "",
+      "steps": []
+    },
+    {
+      "slug": "coming-soon-margarita",
+      "title": "Classic Margarita",
+      "category": "Cocktails",
+      "premium": true,
+      "description": "Upload a video for this recipe to activate it. Marked as a premium/subscriber recipe example.",
+      "video": null,
+      "thumbnail": "",
+      "steps": []
+    },
+    {
+      "slug": "coming-soon-tiramisu",
+      "title": "Tiramisu",
+      "category": "Desserts",
+      "premium": true,
+      "description": "Upload a video for this recipe to activate it. Marked as a premium/subscriber recipe example.",
+      "video": null,
+      "thumbnail": "",
+      "steps": []
+    },
+    {
+      "slug": "meatballs",
+      "title": "Meatballs",
+      "category": "Meats",
+      "premium": false,
+      "description": "",
+      "video": "/videos/meatballs.mp4",
+      "thumbnail": "",
+      "steps": [
+        {
+          "id": 1,
+          "label": "Prep breadcrubs",
+          "start": 6.53,
+          "end": 13.25
+        },
+        {
+          "id": 2,
+          "label": "Chop garlic",
+          "start": 9.29,
+          "end": 10.82
+        },
+        {
+          "id": 3,
+          "label": "chop parsley",
+          "start": 10.91,
+          "end": 5
+        },
+        {
+          "id": 4,
+          "label": "Grate onion",
+          "start": 13.46,
+          "end": 16.31
+        },
+        {
+          "id": 5,
+          "label": "add salt",
+          "start": 16.44,
+          "end": 17.99
+        },
+        {
+          "id": 6,
+          "label": "add dried oregano",
+          "start": 18,
+          "end": 19.34
+        },
+        {
+          "id": 7,
+          "label": "add pepper",
+          "start": 19.34,
+          "end": 21.17
+        },
+        {
+          "id": 8,
+          "label": "Add meat",
+          "start": 21.17,
+          "end": 22.3
+        },
+        {
+          "id": 9,
+          "label": "Add eggs",
+          "start": 22.3,
+          "end": 24.06
+        },
+        {
+          "id": 10,
+          "label": "add olive oil",
+          "start": 24.09,
+          "end": 26.18
+        }
+      ]
+    }
+  ]
+}

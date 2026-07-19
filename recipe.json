@@ -1,0 +1,23 @@
+{
+  "slug": "meatballs",
+  "title": "Meatballs",
+  "category": "Meats",
+  "premium": false,
+  "description": "",
+  "video": "/videos/meatballs.mp4",
+  "thumbnail": "",
+  "steps": [
+    {
+      "id": 1,
+      "label": "Prep breadcrubs",
+      "start": 6.53,
+      "end": 9.23
+    },
+    {
+      "id": 2,
+      "label": "Chop garlic",
+      "start": 9.29,
+      "end": 10.82
+    }
+  ]
+}
