@@ -6,6 +6,7 @@ import StepList from "@/components/StepList";
 import WatchReadToggle from "@/components/WatchReadToggle";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { matchVoiceCommand } from "@/lib/voiceCommands";
+import { playIngredientCheckedSound, playIngredientUncheckedSound } from "@/lib/sound";
 
 export default function RecipePlayer({ recipe, onRead }) {
   const steps = recipe.steps;
@@ -114,14 +115,23 @@ export default function RecipePlayer({ recipe, onRead }) {
     setShowIngredients(false);
   }, []);
 
-  const toggleIngredientChecked = useCallback((index) => {
-    setCheckedIngredients((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  }, []);
+  const toggleIngredientChecked = useCallback(
+    (index) => {
+      // Decided from current state rather than inside the setState updater,
+      // so the sound (a side effect) can't fire twice under React Strict
+      // Mode's dev-only double-invocation of updater functions.
+      const willBeChecked = !checkedIngredients.has(index);
+      setCheckedIngredients((prev) => {
+        const next = new Set(prev);
+        if (willBeChecked) next.add(index);
+        else next.delete(index);
+        return next;
+      });
+      if (willBeChecked) playIngredientCheckedSound();
+      else playIngredientUncheckedSound();
+    },
+    [checkedIngredients]
+  );
 
   // Downward-swipe-to-dismiss on the ingredients panel. Tracked in refs
   // (not state) since touchmove fires continuously and shouldn't trigger a
@@ -192,6 +202,7 @@ export default function RecipePlayer({ recipe, onRead }) {
         // Explicitly set checked (not a toggle) — saying "check off eggs"
         // when eggs is already checked shouldn't accidentally uncheck it.
         setCheckedIngredients((prev) => new Set(prev).add(action.index));
+        playIngredientCheckedSound();
         setShowIngredients(true);
         return;
       }
@@ -201,6 +212,7 @@ export default function RecipePlayer({ recipe, onRead }) {
           next.delete(action.index);
           return next;
         });
+        playIngredientUncheckedSound();
         setShowIngredients(true);
         return;
       }
