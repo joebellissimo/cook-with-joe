@@ -83,6 +83,27 @@ export default function RecipePlayer({ recipe }) {
     setSegmentEnded(false);
   }, []);
 
+  const handleRestartVideo = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = 0;
+    setSegmentMode(false);
+    video
+      .play()
+      .then(() => setIsPlaying(true))
+      .catch(() => {});
+    setSegmentEnded(false);
+  }, []);
+
+  const handleContinuePlaying = useCallback(() => {
+    setSegmentMode(false);
+    videoRef.current
+      ?.play()
+      .then(() => setIsPlaying(true))
+      .catch(() => {});
+    setSegmentEnded(false);
+  }, []);
+
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -138,6 +159,12 @@ export default function RecipePlayer({ recipe }) {
         case "first":
           handleFirst();
           break;
+        case "restart-video":
+          handleRestartVideo();
+          break;
+        case "continue-playing":
+          handleContinuePlaying();
+          break;
         case "loop-on":
           setLoopEnabled(true);
           setSegmentMode(true);
@@ -155,7 +182,18 @@ export default function RecipePlayer({ recipe }) {
           break;
       }
     },
-    [steps, playStep, handleNext, handlePrevious, handleRepeat, handleFirst, handlePlay, handlePause]
+    [
+      steps,
+      playStep,
+      handleNext,
+      handlePrevious,
+      handleRepeat,
+      handleFirst,
+      handleRestartVideo,
+      handleContinuePlaying,
+      handlePlay,
+      handlePause,
+    ]
   );
 
   const voice = useVoiceCommands(handleVoiceCommand);
@@ -326,11 +364,13 @@ export default function RecipePlayer({ recipe }) {
               Try saying: &ldquo;next step&rdquo;, &ldquo;repeat this
               step&rdquo;, &ldquo;loop on&rdquo;, &ldquo;loop off&rdquo;,
               &ldquo;previous step&rdquo;, &ldquo;play&rdquo;,
-              &ldquo;pause&rdquo;/&ldquo;stop&rdquo; — or reference a step by
-              name, like &ldquo;play {steps[0]?.label?.toLowerCase()}&rdquo; or
-              &ldquo;loop {steps[0]?.label?.toLowerCase()}&rdquo; (jumps there
-              and keeps repeating it until you say &ldquo;stop&rdquo; or ask
-              for another step).
+              &ldquo;pause&rdquo;/&ldquo;stop&rdquo;, &ldquo;keep
+              playing&rdquo;, &ldquo;start from the beginning&rdquo; — or
+              reference a step by name, like &ldquo;play{" "}
+              {steps[0]?.label?.toLowerCase()}&rdquo; or &ldquo;loop{" "}
+              {steps[0]?.label?.toLowerCase()}&rdquo; (jumps there and keeps
+              repeating it until you say &ldquo;stop&rdquo; or ask for
+              another step).
             </p>
           </div>
         </div>
