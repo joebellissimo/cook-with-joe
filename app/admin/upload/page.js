@@ -1,4 +1,4 @@
-import ChapterEditor from "@/components/ChapterEditor";
+import UploadWithImport from "@/components/UploadWithImport";
 
 export const metadata = {
   title: "Upload & auto-chapter — Cook With Joe",
@@ -12,7 +12,13 @@ export default function UploadPage() {
       </h1>
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-neutral-600">
         <li>
-          Run{" "}
+          Optionally use <strong>Import from URL</strong> below to pull the
+          title, category, intro, ingredients, tips, and steps from an
+          existing recipe page — everything prefills so you can review it,
+          not publish it outright.
+        </li>
+        <li>
+          Or run{" "}
           <code className="rounded bg-neutral-100 px-1">
             python3 scripts/auto_chapters.py your-video.mp4 --slug ... --title
             ... --category ...
@@ -26,7 +32,7 @@ export default function UploadPage() {
       </ol>
 
       <div className="mt-6">
-        <ChapterEditor />
+        <UploadWithImport />
       </div>
     </div>
   );
