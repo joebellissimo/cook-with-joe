@@ -1,5 +1,6 @@
 import { Jost } from "next/font/google";
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 import "./globals.css";
 
 const jost = Jost({
@@ -21,11 +22,7 @@ export default function RootLayout({ children }) {
       <body className="min-h-full flex flex-col bg-cream text-ink">
         <SiteHeader />
         <main className="flex-1 w-full">{children}</main>
-        <footer className="border-t border-ink/10 bg-white">
-          <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-muted">
-            Cook With Joe — prototype build.
-          </div>
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );
