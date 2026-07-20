@@ -43,6 +43,7 @@ export default function ChapterEditor({ initialRecipe }) {
   const [videoSrc, setVideoSrc] = useState(initialRecipe?.video || null);
   const [videoFile, setVideoFile] = useState(null);
   const [videoPath, setVideoPath] = useState(initialRecipe?.video || "");
+  const [thumbnail, setThumbnail] = useState(initialRecipe?.thumbnail || "");
   const [title, setTitle] = useState(initialRecipe?.title || "");
   const [slug, setSlug] = useState(initialRecipe?.slug || "");
   const [category, setCategory] = useState(initialRecipe?.category || "Meats");
@@ -111,7 +112,7 @@ export default function ChapterEditor({ initialRecipe }) {
       ingredients: linesToList(ingredientsText),
       tips: linesToList(tipsText),
       video: videoPath,
-      thumbnail: "",
+      thumbnail,
       steps: chronological.map((s, i) => ({
         id: i + 1,
         label: s.label,
@@ -162,6 +163,7 @@ export default function ChapterEditor({ initialRecipe }) {
       if (Array.isArray(parsed.ingredients)) setIngredientsText(parsed.ingredients.join("\n"));
       if (Array.isArray(parsed.tips)) setTipsText(parsed.tips.join("\n"));
       if (parsed.video) setVideoPath(parsed.video);
+      if (parsed.thumbnail) setThumbnail(parsed.thumbnail);
       if (Array.isArray(parsed.steps)) {
         setSteps(
           parsed.steps.map((s) => {
@@ -422,6 +424,15 @@ export default function ChapterEditor({ initialRecipe }) {
                 onChange={(e) => setVideoPath(e.target.value)}
                 className="mt-1 w-full rounded border border-ink/10 px-2 py-1"
                 placeholder="filled in automatically after publishing"
+              />
+            </label>
+            <label className="block">
+              Thumbnail URL
+              <input
+                value={thumbnail}
+                onChange={(e) => setThumbnail(e.target.value)}
+                className="mt-1 w-full rounded border border-ink/10 px-2 py-1"
+                placeholder="filled in automatically when imported"
               />
             </label>
             <label className="flex items-center gap-2 pt-1">
