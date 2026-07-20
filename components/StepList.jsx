@@ -7,7 +7,7 @@ function formatTime(seconds) {
 export default function StepList({ steps, activeStepId, onSelect }) {
   if (!steps.length) {
     return (
-      <p className="text-sm text-neutral-500">
+      <p className="text-sm text-muted">
         This recipe doesn&apos;t have any steps tagged yet.
       </p>
     );
@@ -23,15 +23,15 @@ export default function StepList({ steps, activeStepId, onSelect }) {
               onClick={() => onSelect(step)}
               className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
                 isActive
-                  ? "border-orange-500 bg-orange-50 text-orange-900"
-                  : "border-neutral-200 bg-white text-neutral-700 hover:border-orange-200 hover:bg-orange-50/40"
+                  ? "border-brand bg-brand/5 text-ink"
+                  : "border-ink/10 bg-white text-muted hover:border-brand/30 hover:bg-brand/5"
               }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">
                   {index + 1}. {step.label}
                 </span>
-                <span className="shrink-0 text-xs text-neutral-400">
+                <span className="shrink-0 text-xs text-muted">
                   {formatTime(step.start)}–{formatTime(step.end)}
                 </span>
               </div>

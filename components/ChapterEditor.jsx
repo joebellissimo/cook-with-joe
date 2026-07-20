@@ -199,8 +199,8 @@ export default function ChapterEditor({ initialRecipe }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="lg:col-span-2">
-        <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-4">
-          <p className="mb-2 text-sm font-medium text-neutral-700">
+        <div className="rounded-xl border border-dashed border-ink/15 bg-white p-4">
+          <p className="mb-2 text-sm font-medium text-ink">
             1. Load a video to scrub through — it only uploads to storage
             once you click &ldquo;Publish to site&rdquo; below.
           </p>
@@ -209,7 +209,7 @@ export default function ChapterEditor({ initialRecipe }) {
             type="file"
             accept="video/*"
             onChange={handlePickVideo}
-            className="block w-full text-sm text-neutral-600 file:mr-3 file:rounded-full file:border-0 file:bg-orange-600 file:px-4 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-orange-700"
+            className="block w-full text-sm text-muted file:mr-3 file:rounded-full file:border-0 file:bg-brand file:px-4 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-dark"
           />
         </div>
 
@@ -223,30 +223,30 @@ export default function ChapterEditor({ initialRecipe }) {
               onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
             />
           ) : (
-            <div className="flex aspect-video items-center justify-center text-sm text-neutral-400">
+            <div className="flex aspect-video items-center justify-center text-sm text-muted">
               No video loaded yet
             </div>
           )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between rounded-lg bg-white px-4 py-2 text-sm text-neutral-600 shadow-sm">
+        <div className="mt-3 flex items-center justify-between rounded-lg bg-white px-4 py-2 text-sm text-muted shadow-sm">
           <span>
             Current time: <strong>{fmt(currentTime)}s</strong>
           </span>
           <button
             onClick={addStepAtCurrentTime}
             disabled={!videoSrc}
-            className="rounded-full bg-orange-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
           >
             + Add step here
           </button>
         </div>
         {videoSrc && (
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-muted">
             Tip: with the video loaded (and not typing in a field), the{" "}
-            <kbd className="rounded border border-neutral-300 bg-neutral-100 px-1">Left</kbd>{" "}
+            <kbd className="rounded border border-ink/15 bg-cream px-1">Left</kbd>{" "}
             /{" "}
-            <kbd className="rounded border border-neutral-300 bg-neutral-100 px-1">Right</kbd>{" "}
+            <kbd className="rounded border border-ink/15 bg-cream px-1">Right</kbd>{" "}
             arrow keys step one frame at a time — handy for lining up
             back-to-back segments precisely.
           </p>
@@ -254,14 +254,14 @@ export default function ChapterEditor({ initialRecipe }) {
 
         <div className="mt-4">
           {displaySteps.length === 0 && (
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-muted">
               No steps yet — load a video, scrub to a moment, and click
               &ldquo;Add step here&rdquo;, or import AI-suggested chapters
               below.
             </p>
           )}
           {displaySteps.length > 0 && (
-            <p className="mb-2 text-xs text-neutral-400">
+            <p className="mb-2 text-xs text-muted">
               Everything below saves automatically as you type or click
               &ldquo;set to current&rdquo; — there&apos;s no separate save
               button per step. Newest step is at the top. When all your steps
@@ -273,15 +273,15 @@ export default function ChapterEditor({ initialRecipe }) {
             {displaySteps.map((step) => (
               <div
                 key={step.id}
-                className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm"
+                className="rounded-lg border border-ink/10 bg-white p-3 shadow-sm"
               >
                 <input
                   value={step.label}
                   onChange={(e) => updateStep(step.id, { label: e.target.value })}
-                  className="mb-2 w-full rounded border border-neutral-200 px-2 py-1 text-sm font-medium"
+                  className="mb-2 w-full rounded border border-ink/10 px-2 py-1 text-sm font-medium"
                   placeholder="e.g. Mince the onions"
                 />
-                <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                   <label className="flex items-center gap-1">
                     Start
                     <input
@@ -291,12 +291,12 @@ export default function ChapterEditor({ initialRecipe }) {
                       onChange={(e) =>
                         updateStep(step.id, { start: parseFloat(e.target.value) || 0 })
                       }
-                      className="w-20 rounded border border-neutral-200 px-1 py-0.5"
+                      className="w-20 rounded border border-ink/10 px-1 py-0.5"
                     />
                   </label>
                   <button
                     onClick={() => setFieldToCurrentTime(step.id, "start")}
-                    className="rounded border border-neutral-200 px-2 py-0.5 hover:border-orange-300"
+                    className="rounded border border-ink/10 px-2 py-0.5 hover:border-brand/40"
                   >
                     set to current
                   </button>
@@ -309,19 +309,19 @@ export default function ChapterEditor({ initialRecipe }) {
                       onChange={(e) =>
                         updateStep(step.id, { end: parseFloat(e.target.value) || 0 })
                       }
-                      className="w-20 rounded border border-neutral-200 px-1 py-0.5"
+                      className="w-20 rounded border border-ink/10 px-1 py-0.5"
                     />
                   </label>
                   <button
                     onClick={() => setFieldToCurrentTime(step.id, "end")}
-                    className="rounded border border-neutral-200 px-2 py-0.5 hover:border-orange-300"
+                    className="rounded border border-ink/10 px-2 py-0.5 hover:border-brand/40"
                   >
                     set to current
                   </button>
                   <button
                     onClick={() => previewStep(step)}
                     disabled={!videoSrc}
-                    className="rounded border border-neutral-200 px-2 py-0.5 hover:border-orange-300 disabled:opacity-40"
+                    className="rounded border border-ink/10 px-2 py-0.5 hover:border-brand/40 disabled:opacity-40"
                   >
                     ▶ preview
                   </button>
@@ -339,8 +339,8 @@ export default function ChapterEditor({ initialRecipe }) {
       </div>
 
       <div className="space-y-4">
-        <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold text-neutral-700">
+        <div className="rounded-xl border border-ink/10 bg-white p-4 shadow-sm">
+          <h3 className="eyebrow heading-rule mb-4 inline-block text-[11px]">
             Recipe details
           </h3>
           <div className="space-y-2 text-sm">
@@ -349,7 +349,7 @@ export default function ChapterEditor({ initialRecipe }) {
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="mt-1 w-full rounded border border-neutral-200 px-2 py-1"
+                className="mt-1 w-full rounded border border-ink/10 px-2 py-1"
               />
             </label>
             <label className="block">
@@ -357,7 +357,7 @@ export default function ChapterEditor({ initialRecipe }) {
               <input
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                className="mt-1 w-full rounded border border-neutral-200 px-2 py-1"
+                className="mt-1 w-full rounded border border-ink/10 px-2 py-1"
                 placeholder="e.g. garlic-butter-steak"
               />
             </label>
@@ -366,7 +366,7 @@ export default function ChapterEditor({ initialRecipe }) {
               <input
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="mt-1 w-full rounded border border-neutral-200 px-2 py-1"
+                className="mt-1 w-full rounded border border-ink/10 px-2 py-1"
               />
             </label>
             <label className="block">
@@ -374,7 +374,7 @@ export default function ChapterEditor({ initialRecipe }) {
               <input
                 value={videoPath}
                 onChange={(e) => setVideoPath(e.target.value)}
-                className="mt-1 w-full rounded border border-neutral-200 px-2 py-1"
+                className="mt-1 w-full rounded border border-ink/10 px-2 py-1"
                 placeholder="filled in automatically after publishing"
               />
             </label>
@@ -383,20 +383,20 @@ export default function ChapterEditor({ initialRecipe }) {
                 type="checkbox"
                 checked={premium}
                 onChange={(e) => setPremium(e.target.checked)}
-                className="accent-orange-600"
+                className="accent-brand"
               />
               Premium / subscriber-only
             </label>
           </div>
         </div>
 
-        <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-2 text-sm font-semibold text-neutral-700">
+        <div className="rounded-xl border border-ink/10 bg-white p-4 shadow-sm">
+          <h3 className="eyebrow heading-rule mb-4 inline-block text-[11px]">
             Import AI-suggested chapters
           </h3>
-          <p className="mb-2 text-xs text-neutral-500">
+          <p className="mb-2 text-xs text-muted">
             Paste the JSON produced by{" "}
-            <code className="rounded bg-neutral-100 px-1">
+            <code className="rounded bg-cream px-1">
               scripts/auto_chapters.py
             </code>{" "}
             to prefill the fields and steps above, then adjust anything that
@@ -406,25 +406,25 @@ export default function ChapterEditor({ initialRecipe }) {
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
             rows={5}
-            className="w-full rounded border border-neutral-200 px-2 py-1 font-mono text-xs"
+            className="w-full rounded border border-ink/10 px-2 py-1 font-mono text-xs"
             placeholder='{ "title": "...", "steps": [...] }'
           />
           <button
             onClick={handleImport}
-            className="mt-2 w-full rounded-full bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white"
+            className="mt-2 w-full rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
           >
             Load into editor
           </button>
           {importStatus && (
-            <p className="mt-2 text-xs text-neutral-500">{importStatus}</p>
+            <p className="mt-2 text-xs text-muted">{importStatus}</p>
           )}
         </div>
 
-        <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-2 text-sm font-semibold text-neutral-700">
+        <div className="rounded-xl border border-ink/10 bg-white p-4 shadow-sm">
+          <h3 className="eyebrow heading-rule mb-4 inline-block text-[11px]">
             Publish
           </h3>
-          <p className="mb-3 text-xs text-neutral-500">
+          <p className="mb-3 text-xs text-muted">
             {videoFile
               ? "Uploads the new video and saves this recipe live."
               : "Saves this recipe live, keeping its current video."}
@@ -432,7 +432,7 @@ export default function ChapterEditor({ initialRecipe }) {
           <button
             onClick={handlePublish}
             disabled={publishState === "uploading" || publishState === "saving"}
-            className="w-full rounded-full bg-orange-600 px-3 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+            className="w-full rounded-full bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
           >
             {publishState === "uploading"
               ? "Uploading video…"

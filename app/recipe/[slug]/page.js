@@ -16,14 +16,14 @@ export default async function RecipePage({ params }) {
   if (!recipe.video) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="text-xl font-semibold text-neutral-900">
+        <h1 className="text-xl font-semibold text-ink">
           {recipe.title}
         </h1>
-        <p className="mt-2 text-neutral-600">
+        <p className="mt-2 text-muted">
           This recipe doesn&apos;t have a video yet.{" "}
           <Link
             href={`/admin/edit/${recipe.slug}`}
-            className="text-orange-600 underline"
+            className="text-brand underline"
           >
             Add one
           </Link>{" "}

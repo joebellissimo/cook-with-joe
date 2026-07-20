@@ -1,5 +1,12 @@
 import Link from "next/link";
+import { Jost } from "next/font/google";
 import "./globals.css";
+
+const jost = Jost({
+  subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  variable: "--font-jost",
+});
 
 export const metadata = {
   title: "Cook With Joe",
@@ -9,30 +16,33 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-neutral-50 text-neutral-900">
-        <header className="sticky top-0 z-30 bg-orange-600 text-white shadow-sm">
-          <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2 font-bold text-lg tracking-tight">
+    <html lang="en" className={`h-full antialiased ${jost.variable}`}>
+      <body className="min-h-full flex flex-col bg-cream text-ink">
+        <header className="sticky top-0 z-30 border-b border-ink/10 bg-cream/95 backdrop-blur">
+          <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-lg font-medium tracking-tight text-ink"
+            >
               <span aria-hidden="true">🍳</span>
               Cook With Joe
             </Link>
-            <nav className="flex items-center gap-4 text-sm font-medium">
-              <Link href="/" className="hover:underline">
+            <nav className="eyebrow flex items-center gap-6 text-[11px]">
+              <Link href="/" className="hover:text-ink transition-colors">
                 Recipes
               </Link>
-              <Link href="/admin/upload" className="hover:underline">
+              <Link href="/admin/upload" className="hover:text-ink transition-colors">
                 Upload
               </Link>
-              <Link href="/pricing" className="hover:underline">
+              <Link href="/pricing" className="hover:text-ink transition-colors">
                 Pricing
               </Link>
             </nav>
           </div>
         </header>
         <main className="flex-1 w-full">{children}</main>
-        <footer className="border-t border-neutral-200 bg-white">
-          <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-neutral-500">
+        <footer className="border-t border-ink/10 bg-white">
+          <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-muted">
             Cook With Joe — prototype build.
           </div>
         </footer>

@@ -164,17 +164,17 @@ export default function RecipePlayer({ recipe }) {
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-orange-600">
+          <p className="eyebrow text-[11px]">
             {recipe.category}
           </p>
-          <h1 className="text-2xl font-bold text-neutral-900">{recipe.title}</h1>
+          <h1 className="text-2xl font-medium text-ink">{recipe.title}</h1>
           {recipe.description && (
-            <p className="mt-1 text-sm text-neutral-600">{recipe.description}</p>
+            <p className="mt-1 text-sm text-muted">{recipe.description}</p>
           )}
         </div>
         <Link
           href={`/admin/edit/${recipe.slug}`}
-          className="shrink-0 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:border-orange-300"
+          className="shrink-0 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
         >
           ✏️ Edit chapters
         </Link>
@@ -199,14 +199,14 @@ export default function RecipePlayer({ recipe }) {
                 <div className="flex gap-3">
                   <button
                     onClick={handleRepeat}
-                    className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-orange-100"
+                    className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-brand/10"
                   >
                     ↻ Replay step
                   </button>
                   {activeIndex < steps.length - 1 && (
                     <button
                       onClick={handleNext}
-                      className="rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+                      className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
                     >
                       Next step →
                     </button>
@@ -220,31 +220,31 @@ export default function RecipePlayer({ recipe }) {
             <button
               onClick={handlePrevious}
               disabled={activeIndex <= 0}
-              className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 disabled:opacity-40"
+              className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
             >
               ← Previous
             </button>
             <button
               onClick={handleTogglePlay}
-              className="rounded-full bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white"
+              className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
             >
               {isPlaying ? "Pause" : "Play"}
             </button>
             <button
               onClick={handleRepeat}
-              className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700"
+              className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
             >
               ↻ Repeat step
             </button>
             <button
               onClick={handleNext}
               disabled={activeIndex >= steps.length - 1}
-              className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 disabled:opacity-40"
+              className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
             >
               Next →
             </button>
 
-            <label className="ml-1 flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700">
+            <label className="ml-1 flex items-center gap-2 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted">
               <input
                 type="checkbox"
                 checked={loopEnabled}
@@ -256,7 +256,7 @@ export default function RecipePlayer({ recipe }) {
                   // not silently do nothing until you also click a step.
                   if (checked) setSegmentMode(true);
                 }}
-                className="accent-orange-600"
+                className="accent-brand"
               />
               Loop this step
             </label>
@@ -265,7 +265,7 @@ export default function RecipePlayer({ recipe }) {
               onClick={voice.toggle}
               disabled={!voice.supported}
               className={`ml-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-white transition disabled:opacity-40 ${
-                voice.listening ? "bg-red-600" : "bg-orange-600 hover:bg-orange-700"
+                voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
               }`}
               title={voice.supported ? "Toggle voice control" : "Voice control isn't supported in this browser"}
             >
@@ -274,17 +274,17 @@ export default function RecipePlayer({ recipe }) {
           </div>
 
           {!voice.supported && (
-            <p className="mt-2 text-xs text-neutral-500">
+            <p className="mt-2 text-xs text-muted">
               Voice control needs a browser with speech recognition support
               (Chrome or Edge work best). It isn&apos;t available here.
             </p>
           )}
           {voice.supported && voice.lastHeard && (
-            <p className="mt-2 text-xs text-neutral-500">
+            <p className="mt-2 text-xs text-muted">
               Heard: &ldquo;{voice.lastHeard}&rdquo;
             </p>
           )}
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-muted">
             Try saying: &ldquo;next step&rdquo;, &ldquo;repeat this
             step&rdquo;, &ldquo;loop on&rdquo;, &ldquo;loop off&rdquo;,
             &ldquo;previous step&rdquo;, &ldquo;play&rdquo;,
@@ -297,7 +297,7 @@ export default function RecipePlayer({ recipe }) {
         </div>
 
         <div>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="eyebrow heading-rule mb-4 inline-block text-[11px]">
             Steps
           </h2>
           <StepList steps={steps} activeStepId={activeStepId} onSelect={playStep} />

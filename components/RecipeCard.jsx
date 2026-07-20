@@ -5,25 +5,25 @@ export default function RecipeCard({ recipe }) {
 
   const innerContent = (
     <div
-      className={`h-full rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition ${
-        isActive ? "hover:shadow-md hover:border-orange-300" : "opacity-60"
+      className={`h-full rounded-xl border border-ink/10 bg-white p-4 shadow-sm transition ${
+        isActive ? "hover:shadow-md hover:border-brand/40" : "opacity-60"
       }`}
     >
-      <div className="mb-3 flex aspect-video items-center justify-center rounded-lg bg-neutral-100 text-3xl">
+      <div className="mb-3 flex aspect-video items-center justify-center rounded-lg bg-cream text-3xl">
         {isActive ? "▶" : "🔒"}
       </div>
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold text-neutral-900">{recipe.title}</h3>
+        <h3 className="font-medium text-ink">{recipe.title}</h3>
         {recipe.premium && (
-          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+          <span className="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand">
             Premium
           </span>
         )}
       </div>
-      <p className="mt-1 text-xs uppercase tracking-wide text-orange-600">
+      <p className="eyebrow mt-1 text-[11px]">
         {recipe.category}
       </p>
-      <p className="mt-2 text-sm text-neutral-600">
+      <p className="mt-2 text-sm text-muted">
         {isActive
           ? `${recipe.steps.length} step${recipe.steps.length === 1 ? "" : "s"}`
           : recipe.description}
@@ -46,7 +46,7 @@ export default function RecipeCard({ recipe }) {
       <Link
         href={`/admin/edit/${recipe.slug}`}
         title="Edit chapters"
-        className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-sm shadow opacity-0 transition group-hover:opacity-100 hover:bg-orange-100"
+        className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-sm shadow opacity-0 transition group-hover:opacity-100 hover:bg-brand/10"
       >
         ✏️
       </Link>
