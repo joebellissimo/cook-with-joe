@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getRecipeBySlug } from "@/lib/recipes";
-import RecipePlayer from "@/components/RecipePlayer";
+import RecipeView from "@/components/RecipeView";
 
 // Recipes are published live via Blob storage and can change at any time,
 // so slugs aren't known at build time — every request renders on demand
@@ -33,5 +33,5 @@ export default async function RecipePage({ params }) {
     );
   }
 
-  return <RecipePlayer recipe={recipe} />;
+  return <RecipeView recipe={recipe} />;
 }

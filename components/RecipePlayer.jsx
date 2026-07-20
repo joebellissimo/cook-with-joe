@@ -3,10 +3,11 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import StepList from "@/components/StepList";
+import WatchReadToggle from "@/components/WatchReadToggle";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { matchVoiceCommand } from "@/lib/voiceCommands";
 
-export default function RecipePlayer({ recipe }) {
+export default function RecipePlayer({ recipe, onRead }) {
   const steps = recipe.steps;
   const videoRef = useRef(null);
 
@@ -14,6 +15,10 @@ export default function RecipePlayer({ recipe }) {
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [segmentEnded, setSegmentEnded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  // Quick-glance ingredients checklist, slid up over the video on mobile —
+  // doesn't pause playback or otherwise leave hands-free mode.
+  const [showIngredients, setShowIngredients] = useState(false);
+  const [checkedIngredients, setCheckedIngredients] = useState(() => new Set());
   // false = "just play the whole video through" (the default on first load —
   // no stopping at step boundaries). true = "focused on one step" — entered
   // whenever you jump to a specific step by name, by list click, or via
@@ -102,6 +107,15 @@ export default function RecipePlayer({ recipe }) {
       .then(() => setIsPlaying(true))
       .catch(() => {});
     setSegmentEnded(false);
+  }, []);
+
+  const toggleIngredientChecked = useCallback((index) => {
+    setCheckedIngredients((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
   }, []);
 
   const handleTimeUpdate = useCallback(() => {
@@ -233,12 +247,15 @@ export default function RecipePlayer({ recipe }) {
             <p className="mt-1 text-sm text-muted">{recipe.description}</p>
           )}
         </div>
-        <Link
-          href={`/admin/edit/${recipe.slug}`}
-          className="shrink-0 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
-        >
-          ✏️ Edit chapters
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <WatchReadToggle mode="watch" onWatch={() => {}} onRead={onRead} />
+          <Link
+            href={`/admin/edit/${recipe.slug}`}
+            className="shrink-0 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
+          >
+            ✏️ Edit chapters
+          </Link>
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col md:grid md:flex-none md:grid-cols-3 md:gap-6">
@@ -258,12 +275,13 @@ export default function RecipePlayer({ recipe }) {
               >
                 ←
               </Link>
-              <div className="pointer-events-none min-w-0">
+              <div className="pointer-events-none min-w-0 flex-1">
                 <p className="text-[10px] font-medium uppercase tracking-widest text-white/80">
                   {recipe.category}
                 </p>
                 <h1 className="truncate text-sm font-medium text-white">{recipe.title}</h1>
               </div>
+              <WatchReadToggle mode="watch" onWatch={() => {}} onRead={onRead} />
             </div>
 
             <video
@@ -298,6 +316,45 @@ export default function RecipePlayer({ recipe }) {
                     </button>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Quick-glance ingredients checklist — slides up over the video
+                on mobile without pausing playback or otherwise leaving
+                hands-free mode. */}
+            {recipe.ingredients?.length > 0 && (
+              <div
+                className={`absolute inset-x-0 bottom-0 z-20 max-h-[70%] overflow-y-auto rounded-t-2xl bg-cream p-4 shadow-xl transition-transform duration-300 md:hidden ${
+                  showIngredients ? "translate-y-0" : "pointer-events-none translate-y-full"
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="eyebrow text-[11px]">Ingredients</h2>
+                  <button
+                    onClick={() => setShowIngredients(false)}
+                    aria-label="Close ingredients"
+                    className="text-muted"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <ul className="space-y-2 text-sm">
+                  {recipe.ingredients.map((ingredient, i) => (
+                    <li key={i}>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={checkedIngredients.has(i)}
+                          onChange={() => toggleIngredientChecked(i)}
+                          className="accent-brand"
+                        />
+                        <span className={checkedIngredients.has(i) ? "text-muted line-through" : "text-ink"}>
+                          {ingredient}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
@@ -434,6 +491,14 @@ export default function RecipePlayer({ recipe }) {
                 {loopCheckbox}
                 Loop this step
               </label>
+              {recipe.ingredients?.length > 0 && (
+                <button
+                  onClick={() => setShowIngredients((v) => !v)}
+                  className="flex items-center gap-1"
+                >
+                  🧾 Ingredients
+                </button>
+              )}
             </div>
           </div>
         </div>

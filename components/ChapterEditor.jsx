@@ -13,7 +13,15 @@ let nextLocalId = 1000;
 
 function blankStep(start = 0, end = 5) {
   nextLocalId += 1;
-  return { id: nextLocalId, label: "New step", start, end };
+  return { id: nextLocalId, label: "New step", direction: "", start, end };
+}
+
+// Textarea -> array of non-empty lines, for Ingredients/Tips.
+function linesToList(text) {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function fmt(n) {
@@ -31,7 +39,14 @@ export default function ChapterEditor({ initialRecipe }) {
   const [slug, setSlug] = useState(initialRecipe?.slug || "");
   const [category, setCategory] = useState(initialRecipe?.category || "Meats");
   const [premium, setPremium] = useState(Boolean(initialRecipe?.premium));
-  const [steps, setSteps] = useState(initialRecipe?.steps || []);
+  const [intro, setIntro] = useState(initialRecipe?.intro || "");
+  const [ingredientsText, setIngredientsText] = useState(
+    (initialRecipe?.ingredients || []).join("\n")
+  );
+  const [tipsText, setTipsText] = useState((initialRecipe?.tips || []).join("\n"));
+  const [steps, setSteps] = useState(
+    (initialRecipe?.steps || []).map((s) => ({ direction: "", ...s }))
+  );
   const [currentTime, setCurrentTime] = useState(0);
   const [importText, setImportText] = useState("");
   const [importStatus, setImportStatus] = useState("");
@@ -84,11 +99,15 @@ export default function ChapterEditor({ initialRecipe }) {
       category,
       premium,
       description: "",
+      intro,
+      ingredients: linesToList(ingredientsText),
+      tips: linesToList(tipsText),
       video: videoPath,
       thumbnail: "",
       steps: chronological.map((s, i) => ({
         id: i + 1,
         label: s.label,
+        direction: s.direction || "",
         start: fmt(s.start),
         end: fmt(s.end),
       })),
@@ -131,6 +150,9 @@ export default function ChapterEditor({ initialRecipe }) {
       if (parsed.slug) setSlug(parsed.slug);
       if (parsed.category) setCategory(parsed.category);
       if (typeof parsed.premium === "boolean") setPremium(parsed.premium);
+      if (parsed.intro) setIntro(parsed.intro);
+      if (Array.isArray(parsed.ingredients)) setIngredientsText(parsed.ingredients.join("\n"));
+      if (Array.isArray(parsed.tips)) setTipsText(parsed.tips.join("\n"));
       if (parsed.video) setVideoPath(parsed.video);
       if (Array.isArray(parsed.steps)) {
         setSteps(
@@ -139,6 +161,7 @@ export default function ChapterEditor({ initialRecipe }) {
             return {
               id: nextLocalId,
               label: s.label || "Step",
+              direction: s.direction || "",
               start: Number(s.start) || 0,
               end: Number(s.end) || Number(s.start) + 5 || 5,
             };
@@ -278,8 +301,14 @@ export default function ChapterEditor({ initialRecipe }) {
                 <input
                   value={step.label}
                   onChange={(e) => updateStep(step.id, { label: e.target.value })}
-                  className="mb-2 w-full rounded border border-ink/10 px-2 py-1 text-sm font-medium"
+                  className="mb-1 w-full rounded border border-ink/10 px-2 py-1 text-sm font-medium"
                   placeholder="e.g. Mince the onions"
+                />
+                <input
+                  value={step.direction || ""}
+                  onChange={(e) => updateStep(step.id, { direction: e.target.value })}
+                  className="mb-2 w-full rounded border border-ink/10 px-2 py-1 text-xs text-muted"
+                  placeholder="Full instruction sentence for the Read view (optional)"
                 />
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                   <label className="flex items-center gap-1">
@@ -386,6 +415,49 @@ export default function ChapterEditor({ initialRecipe }) {
                 className="accent-brand"
               />
               Premium / subscriber-only
+            </label>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-ink/10 bg-white p-4 shadow-sm">
+          <h3 className="eyebrow heading-rule mb-4 inline-block text-[11px]">
+            Story &amp; ingredients
+          </h3>
+          <p className="mb-2 text-xs text-muted">
+            Shown in the recipe&apos;s <strong>Read</strong> view, alongside
+            the full instruction sentences from each step&apos;s
+            &ldquo;direction&rdquo; field above.
+          </p>
+          <div className="space-y-3 text-sm">
+            <label className="block">
+              Intro
+              <textarea
+                value={intro}
+                onChange={(e) => setIntro(e.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded border border-ink/10 px-2 py-1"
+                placeholder="A short story or context paragraph for this recipe."
+              />
+            </label>
+            <label className="block">
+              Ingredients
+              <textarea
+                value={ingredientsText}
+                onChange={(e) => setIngredientsText(e.target.value)}
+                rows={5}
+                className="mt-1 w-full rounded border border-ink/10 px-2 py-1 font-mono text-xs"
+                placeholder={"One ingredient per line, e.g.\n2 cloves garlic, minced"}
+              />
+            </label>
+            <label className="block">
+              Tips
+              <textarea
+                value={tipsText}
+                onChange={(e) => setTipsText(e.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded border border-ink/10 px-2 py-1 font-mono text-xs"
+                placeholder={"One tip per line, e.g.\nLet the meat rest 5 minutes before slicing."}
+              />
             </label>
           </div>
         </div>

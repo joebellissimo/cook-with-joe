@@ -13,36 +13,56 @@
       "category": "Vegetarian",
       "premium": false,
       "description": "A sample recipe used to demo the player: step-by-step chapters, loop mode, and voice control. Swap in your own video and steps whenever you're ready.",
+      "intro": "A weeknight staple Joe's made hundreds of times — sweet caramelized onions and garlic simmered down into a sauce that tastes like it took all day, in under twenty minutes.",
+      "ingredients": [
+        "2 large yellow onions, thinly sliced",
+        "3 cloves garlic, minced",
+        "2 tbsp olive oil",
+        "1 can (28 oz) crushed tomatoes",
+        "1/2 tsp red pepper flakes",
+        "Salt and pepper, to taste",
+        "Fresh basil, for serving"
+      ],
+      "tips": [
+        "Low and slow on the onions — don't rush the caramelization or you'll lose the sweetness.",
+        "Add a splash of pasta water at the end to loosen the sauce and help it cling to the noodles.",
+        "This sauce freezes well — double the batch and save half for a night you don't feel like cooking."
+      ],
       "video": "/videos/demo-recipe.mp4",
       "thumbnail": "",
       "steps": [
         {
           "id": 1,
           "label": "Mince the onions",
+          "direction": "Thinly slice both onions into even half-moons so they cook down at the same rate.",
           "start": 0,
           "end": 8
         },
         {
           "id": 2,
           "label": "Heat the pan",
+          "direction": "Warm the olive oil in a large skillet over medium heat until it shimmers.",
           "start": 8,
           "end": 16
         },
         {
           "id": 3,
           "label": "Sauté the onions",
+          "direction": "Add the onions and a pinch of salt, stirring occasionally, until soft and golden — about 10 minutes.",
           "start": 16,
           "end": 24
         },
         {
           "id": 4,
           "label": "Add the garlic",
+          "direction": "Stir in the garlic and red pepper flakes and cook until fragrant, about 30 seconds.",
           "start": 24,
           "end": 32
         },
         {
           "id": 5,
           "label": "Simmer the sauce",
+          "direction": "Pour in the crushed tomatoes, season with salt and pepper, and simmer uncovered for 10 minutes until thickened.",
           "start": 32,
           "end": 40
         }
