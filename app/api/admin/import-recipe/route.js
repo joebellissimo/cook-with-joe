@@ -197,14 +197,27 @@ function htmlToReadableText(html) {
     .trim();
 }
 
-// Fetches a discovered asset and uploads it to Blob. Returns null (rather
-// than throwing) on any failure, so a missing or broken video/thumbnail
-// never fails the whole import — the chef just gets a draft without it.
+// Fetches a discovered asset and uploads it to Blob. Never throws — instead
+// returns { url, error } so a missing or broken video/thumbnail never fails
+// the whole import; the caller decides whether a non-null error is worth
+// surfacing (e.g. as a warning) or safe to ignore (nothing was found at all).
 async function uploadAssetToBlob({ sourceUrl, pathname, fallbackContentType }) {
-  if (!sourceUrl) return null;
+  if (!sourceUrl) return { url: null, error: null };
   try {
-    const res = await fetch(sourceUrl);
-    if (!res.ok) return null;
+    const res = await fetch(sourceUrl, {
+      redirect: "follow",
+      headers: {
+        // Some image CDNs reject requests with no User-Agent, or one that
+        // self-identifies as a bot/importer — a realistic browser UA (plus
+        // an Accept header some CDNs also check for) avoids that.
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "image/*,video/*,*/*;q=0.8",
+      },
+    });
+    if (!res.ok) {
+      return { url: null, error: `Fetch failed with status ${res.status}` };
+    }
     const contentType = res.headers.get("content-type") || fallbackContentType;
     const buffer = Buffer.from(await res.arrayBuffer());
     const blob = await put(pathname, buffer, {
@@ -213,9 +226,9 @@ async function uploadAssetToBlob({ sourceUrl, pathname, fallbackContentType }) {
       allowOverwrite: true,
       contentType,
     });
-    return blob.url;
-  } catch {
-    return null;
+    return { url: blob.url, error: null };
+  } catch (err) {
+    return { url: null, error: err.message || "Unknown fetch error" };
   }
 }
 
@@ -331,7 +344,7 @@ export async function POST(request) {
   const slug = slugify(draft.title);
   const timestamp = Date.now();
 
-  const [videoBlobUrl, thumbnailBlobUrl] = await Promise.all([
+  const [videoResult, thumbnailResult] = await Promise.all([
     uploadAssetToBlob({
       sourceUrl: videoSourceUrl,
       pathname: `videos/${slug}-${timestamp}.mp4`,
@@ -344,9 +357,18 @@ export async function POST(request) {
     }),
   ]);
 
+  // Only warn when a thumbnail was actually found but couldn't be fetched —
+  // "nothing found on the page" is a normal, silent no-op, not a failure.
+  const thumbnailWarning =
+    thumbnailSourceUrl && !thumbnailResult.url
+      ? `Found a thumbnail image but couldn't fetch it (${thumbnailResult.error}) — add one manually if you'd like.`
+      : null;
+
   return NextResponse.json({
     ...draft,
-    ...(videoBlobUrl ? { video: videoBlobUrl } : {}),
-    ...(thumbnailBlobUrl ? { thumbnail: thumbnailBlobUrl } : {}),
+    slug,
+    ...(videoResult.url ? { video: videoResult.url } : {}),
+    ...(thumbnailResult.url ? { thumbnail: thumbnailResult.url } : {}),
+    ...(thumbnailWarning ? { thumbnailWarning } : {}),
   });
 }

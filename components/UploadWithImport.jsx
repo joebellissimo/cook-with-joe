@@ -7,6 +7,7 @@ export default function UploadWithImport() {
   const [url, setUrl] = useState("");
   const [importState, setImportState] = useState("idle"); // idle | loading | error
   const [importError, setImportError] = useState("");
+  const [importWarning, setImportWarning] = useState("");
   const [importedRecipe, setImportedRecipe] = useState(null);
   const [editorKey, setEditorKey] = useState(0);
 
@@ -14,6 +15,7 @@ export default function UploadWithImport() {
     if (!url.trim()) return;
     setImportState("loading");
     setImportError("");
+    setImportWarning("");
 
     try {
       const res = await fetch("/api/admin/import-recipe", {
@@ -29,6 +31,7 @@ export default function UploadWithImport() {
 
       setImportedRecipe({
         title: body.title || "",
+        slug: body.slug || "",
         category: body.category || "Meats",
         intro: body.intro || "",
         ingredients: Array.isArray(body.ingredients) ? body.ingredients : [],
@@ -53,6 +56,7 @@ export default function UploadWithImport() {
       // state (seeded once, at mount, from that prop) picks up the import.
       setEditorKey((k) => k + 1);
       setImportState("idle");
+      setImportWarning(body.thumbnailWarning || "");
     } catch (err) {
       setImportState("error");
       setImportError(err.message || "Something went wrong importing that page.");
@@ -87,6 +91,9 @@ export default function UploadWithImport() {
         </div>
         {importState === "error" && (
           <p className="mt-2 text-sm text-red-600">{importError}</p>
+        )}
+        {importWarning && (
+          <p className="mt-2 text-sm text-brand">{importWarning}</p>
         )}
       </div>
 
