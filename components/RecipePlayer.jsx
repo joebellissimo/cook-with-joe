@@ -268,10 +268,11 @@ export default function RecipePlayer({ recipe }) {
 
             <video
               ref={videoRef}
-              // Mobile: fill the 2/3-height video section edge-to-edge,
-              // cropping portrait/off-ratio source footage via object-cover
-              // instead of letterboxing it inside a forced 16:9 box.
-              className="h-full w-full object-cover md:aspect-video md:h-auto md:object-fill"
+              // object-cover crops to fill the frame without distorting the
+              // picture — full-bleed on mobile, and within the 16:9 box at
+              // md and up (where aspect-video/h-auto replace the mobile
+              // h-full sizing).
+              className="h-full w-full object-cover md:aspect-video md:h-auto"
               src={recipe.video}
               onTimeUpdate={handleTimeUpdate}
               onPlay={() => setIsPlaying(true)}
