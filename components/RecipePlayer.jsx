@@ -177,11 +177,13 @@ export default function RecipePlayer({ recipe }) {
   );
 
   return (
-    // Below md: a fixed, full-viewport stack that takes over the screen
-    // (video / scrollable steps / control bar) so only the steps list
-    // scrolls — not the page. At md and up this reverts to the original
-    // static, side-by-side grid layout.
-    <div className="fixed inset-0 z-40 flex flex-col overflow-hidden bg-cream md:static md:z-auto md:mx-auto md:block md:max-w-5xl md:overflow-visible md:px-4 md:py-6">
+    // Below md: a full-viewport (h-dvh) stack that takes over the screen —
+    // video / scrollable steps / control bar — so only the steps list
+    // scrolls, not the page. h-dvh + overflow-hidden (rather than a fixed
+    // position) is what actually holds this to the viewport reliably under
+    // iOS Safari's dynamic toolbar. At md and up this reverts to the
+    // original static, side-by-side grid layout.
+    <div className="flex h-dvh flex-col overflow-hidden bg-cream md:mx-auto md:block md:h-auto md:max-w-5xl md:overflow-visible md:px-4 md:py-6">
       {/* Title row — md and up only; on mobile the title is overlaid on the video instead. */}
       <div className="hidden md:mb-4 md:flex md:items-start md:justify-between md:gap-3">
         <div>
@@ -202,8 +204,9 @@ export default function RecipePlayer({ recipe }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col md:grid md:flex-none md:grid-cols-3 md:gap-6">
-        <div className="shrink-0 md:col-span-2">
-          <div className="relative overflow-hidden bg-black shadow md:rounded-xl">
+        {/* Video section — 2/3 of the viewport height on mobile. */}
+        <div className="flex min-h-0 flex-[2] flex-col md:col-span-2 md:block md:flex-none">
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-black shadow md:flex-none md:h-auto md:rounded-xl">
             {/* Mobile-only title/category overlay, anchored to the top edge
                 of the video instead of centered like the step-finished
                 overlay below — small text, non-blocking of the frame. */}
@@ -216,7 +219,10 @@ export default function RecipePlayer({ recipe }) {
 
             <video
               ref={videoRef}
-              className="aspect-video w-full"
+              // Mobile: fill the 2/3-height video section edge-to-edge,
+              // cropping portrait/off-ratio source footage via object-cover
+              // instead of letterboxing it inside a forced 16:9 box.
+              className="h-full w-full object-cover md:aspect-video md:h-auto md:object-fill"
               src={recipe.video}
               onTimeUpdate={handleTimeUpdate}
               onPlay={() => setIsPlaying(true)}
@@ -319,59 +325,66 @@ export default function RecipePlayer({ recipe }) {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:flex-none md:overflow-visible md:px-0 md:pt-0">
-          <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
-            Steps
-          </h2>
-          <StepList steps={steps} activeStepId={activeStepId} onSelect={playStep} />
-        </div>
-      </div>
+        {/* Bottom third — steps list + control bar grouped together so they
+            share the remaining 1/3 of viewport height on mobile. At md and
+            up this wrapper carries no layout of its own; the steps list
+            reverts to being a normal 3rd grid column and the control bar
+            (md:hidden) takes no space. */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:flex-none md:overflow-visible md:px-0 md:pt-0">
+            <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
+              Steps
+            </h2>
+            <StepList steps={steps} activeStepId={activeStepId} onSelect={playStep} />
+          </div>
 
-      {/* Mobile-only control bar, fixed to the bottom of the screen — padded
-          for the iOS home-indicator safe area. */}
-      <div className="shrink-0 border-t border-ink/10 bg-white pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 md:hidden">
-        <div className="flex items-center gap-2 px-3">
-          <button
-            onClick={handlePrevious}
-            disabled={activeIndex <= 0}
-            aria-label="Previous step"
-            className="rounded-full border border-ink/15 bg-white px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
-          >
-            ←
-          </button>
-          <button
-            onClick={handleTogglePlay}
-            className="flex-1 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white"
-          >
-            {isPlaying ? "Pause" : "Play"}
-          </button>
-          <button
-            onClick={handleNext}
-            disabled={activeIndex >= steps.length - 1}
-            aria-label="Next step"
-            className="rounded-full border border-ink/15 bg-white px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
-          >
-            →
-          </button>
-          <button
-            onClick={voice.toggle}
-            disabled={!voice.supported}
-            aria-label="Toggle voice control"
-            className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
-              voice.listening ? "bg-red-600" : "bg-brand"
-            }`}
-          >
-            🎙️
-          </button>
-        </div>
-        <div className="mt-1.5 flex items-center justify-center gap-4 px-3 text-xs text-muted">
-          <button onClick={handleRepeat} className="flex items-center gap-1">
-            ↻ Repeat
-          </button>
-          <label className="flex items-center gap-1.5">
-            {loopCheckbox}
-            Loop this step
-          </label>
+          {/* Mobile-only control bar, sitting right below the steps list —
+              padded for the iOS home-indicator safe area. */}
+          <div className="shrink-0 border-t border-ink/10 bg-white pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 md:hidden">
+            <div className="flex items-center gap-2 px-3">
+              <button
+                onClick={handlePrevious}
+                disabled={activeIndex <= 0}
+                aria-label="Previous step"
+                className="rounded-full border border-ink/15 bg-white px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
+              >
+                ←
+              </button>
+              <button
+                onClick={handleTogglePlay}
+                className="flex-1 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white"
+              >
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+              <button
+                onClick={handleNext}
+                disabled={activeIndex >= steps.length - 1}
+                aria-label="Next step"
+                className="rounded-full border border-ink/15 bg-white px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
+              >
+                →
+              </button>
+              <button
+                onClick={voice.toggle}
+                disabled={!voice.supported}
+                aria-label="Toggle voice control"
+                className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
+                  voice.listening ? "bg-red-600" : "bg-brand"
+                }`}
+              >
+                🎙️
+              </button>
+            </div>
+            <div className="mt-1.5 flex items-center justify-center gap-4 px-3 text-xs text-muted">
+              <button onClick={handleRepeat} className="flex items-center gap-1">
+                ↻ Repeat
+              </button>
+              <label className="flex items-center gap-1.5">
+                {loopCheckbox}
+                Loop this step
+              </label>
+            </div>
+          </div>
         </div>
       </div>
     </div>
