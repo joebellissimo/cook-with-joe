@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { upload } from "@vercel/blob/client";
 
 // Assumes ~30fps — there's no reliable way to read a plain <video> element's
 // actual frame rate in the browser, so this is a close-enough nudge amount
@@ -23,7 +25,8 @@ export default function ChapterEditor({ initialRecipe }) {
   const fileInputRef = useRef(null);
 
   const [videoSrc, setVideoSrc] = useState(null);
-  const [videoPath, setVideoPath] = useState(initialRecipe?.video || "/videos/");
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoPath, setVideoPath] = useState(initialRecipe?.video || "");
   const [title, setTitle] = useState(initialRecipe?.title || "");
   const [slug, setSlug] = useState(initialRecipe?.slug || "");
   const [category, setCategory] = useState(initialRecipe?.category || "Meats");
@@ -31,13 +34,16 @@ export default function ChapterEditor({ initialRecipe }) {
   const [steps, setSteps] = useState(initialRecipe?.steps || []);
   const [currentTime, setCurrentTime] = useState(0);
   const [importText, setImportText] = useState("");
-  const [copyStatus, setCopyStatus] = useState("");
+  const [importStatus, setImportStatus] = useState("");
+  const [publishState, setPublishState] = useState("idle"); // idle | uploading | saving | success | error
+  const [publishMessage, setPublishMessage] = useState("");
 
   const handlePickVideo = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
     setVideoSrc(url);
+    setVideoFile(file);
   };
 
   const addStepAtCurrentTime = () => {
@@ -118,28 +124,6 @@ export default function ChapterEditor({ initialRecipe }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const exportJson = () => JSON.stringify(buildRecipeObject(), null, 2);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(exportJson());
-      setCopyStatus("Copied!");
-    } catch {
-      setCopyStatus("Couldn't copy — select and copy manually below.");
-    }
-    setTimeout(() => setCopyStatus(""), 2500);
-  };
-
-  const handleDownload = () => {
-    const blob = new Blob([exportJson()], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${slug || "recipe"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleImport = () => {
     try {
       const parsed = JSON.parse(importText);
@@ -161,11 +145,55 @@ export default function ChapterEditor({ initialRecipe }) {
           })
         );
       }
-      setCopyStatus("Imported.");
+      setImportStatus("Imported.");
     } catch (e) {
-      setCopyStatus("That doesn't look like valid JSON.");
+      setImportStatus("That doesn't look like valid JSON.");
     }
-    setTimeout(() => setCopyStatus(""), 2500);
+    setTimeout(() => setImportStatus(""), 2500);
+  };
+
+  const handlePublish = async () => {
+    setPublishState("uploading");
+    setPublishMessage("");
+
+    try {
+      const recipe = buildRecipeObject();
+      let videoUrl = recipe.video;
+
+      if (videoFile) {
+        const pathname = `videos/${recipe.slug}-${Date.now()}.mp4`;
+        const blob = await upload(pathname, videoFile, {
+          access: "public",
+          handleUploadUrl: "/api/admin/upload-video",
+        });
+        videoUrl = blob.url;
+      }
+
+      if (!videoUrl) {
+        throw new Error("Load a video or set a video URL before publishing.");
+      }
+
+      setPublishState("saving");
+      const finalRecipe = { ...recipe, video: videoUrl };
+
+      const res = await fetch("/api/admin/recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(finalRecipe),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Publish failed (${res.status})`);
+      }
+
+      setVideoPath(videoUrl);
+      setVideoFile(null);
+      setPublishState("success");
+    } catch (err) {
+      setPublishState("error");
+      setPublishMessage(err.message || "Something went wrong while publishing.");
+    }
   };
 
   return (
@@ -173,8 +201,8 @@ export default function ChapterEditor({ initialRecipe }) {
       <div className="lg:col-span-2">
         <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-4">
           <p className="mb-2 text-sm font-medium text-neutral-700">
-            1. Load a video to scrub through (this stays local to your
-            browser — nothing is uploaded anywhere by this prototype)
+            1. Load a video to scrub through — it only uploads to storage
+            once you click &ldquo;Publish to site&rdquo; below.
           </p>
           <input
             ref={fileInputRef}
@@ -237,7 +265,7 @@ export default function ChapterEditor({ initialRecipe }) {
               Everything below saves automatically as you type or click
               &ldquo;set to current&rdquo; — there&apos;s no separate save
               button per step. Newest step is at the top. When all your steps
-              look right, scroll down to <strong>Export</strong> to add this
+              look right, scroll down to <strong>Publish</strong> to add this
               recipe to the library.
             </p>
           )}
@@ -342,11 +370,12 @@ export default function ChapterEditor({ initialRecipe }) {
               />
             </label>
             <label className="block">
-              Video path (once copied into public/videos/)
+              Video URL
               <input
                 value={videoPath}
                 onChange={(e) => setVideoPath(e.target.value)}
                 className="mt-1 w-full rounded border border-neutral-200 px-2 py-1"
+                placeholder="filled in automatically after publishing"
               />
             </label>
             <label className="flex items-center gap-2 pt-1">
@@ -386,58 +415,44 @@ export default function ChapterEditor({ initialRecipe }) {
           >
             Load into editor
           </button>
+          {importStatus && (
+            <p className="mt-2 text-xs text-neutral-500">{importStatus}</p>
+          )}
         </div>
 
         <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h3 className="mb-2 text-sm font-semibold text-neutral-700">
-            Export — add this recipe to the library
+            Publish
           </h3>
-          <p className="mb-2 text-xs text-neutral-500">
-            This preview updates live as you edit steps above, so you can
-            confirm everything looks right before exporting:
+          <p className="mb-3 text-xs text-neutral-500">
+            {videoFile
+              ? "Uploads the new video and saves this recipe live."
+              : "Saves this recipe live, keeping its current video."}
           </p>
-          <textarea
-            readOnly
-            value={exportJson()}
-            rows={8}
-            className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 font-mono text-[11px]"
-          />
-          <div className="mt-2 flex gap-2">
-            <button
-              onClick={handleCopy}
-              className="flex-1 rounded-full bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700"
-            >
-              Copy JSON
-            </button>
-            <button
-              onClick={handleDownload}
-              className="flex-1 rounded-full border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"
-            >
-              Download JSON
-            </button>
-          </div>
-          {copyStatus && (
-            <p className="mt-2 text-xs text-neutral-500">{copyStatus}</p>
+          <button
+            onClick={handlePublish}
+            disabled={publishState === "uploading" || publishState === "saving"}
+            className="w-full rounded-full bg-orange-600 px-3 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+          >
+            {publishState === "uploading"
+              ? "Uploading video…"
+              : publishState === "saving"
+                ? "Publishing…"
+                : "Publish to site"}
+          </button>
+
+          {publishState === "success" && (
+            <p className="mt-2 text-sm text-green-700">
+              Published!{" "}
+              <Link href={`/recipe/${slug}`} className="underline">
+                View the live recipe
+              </Link>
+              .
+            </p>
           )}
-          <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs text-neutral-500">
-            <li>
-              Copy your video file into <code>public/videos/</code> (matching
-              the &ldquo;Video path&rdquo; field above).
-            </li>
-            <li>Click &ldquo;Download JSON&rdquo; to save this recipe as a file.</li>
-            <li>
-              In a terminal, from the project folder, run:
-              <br />
-              <code className="mt-1 block rounded bg-neutral-100 px-2 py-1">
-                node scripts/add_recipe.js ~/Downloads/{slug || "recipe"}.json
-              </code>
-              <span className="mt-1 block">
-                That merges it into <code>data/recipes.json</code>
-                automatically — it&apos;ll appear on the home page next time
-                you refresh (no need to restart the dev server).
-              </span>
-            </li>
-          </ol>
+          {publishState === "error" && (
+            <p className="mt-2 text-sm text-red-600">{publishMessage}</p>
+          )}
         </div>
       </div>
     </div>

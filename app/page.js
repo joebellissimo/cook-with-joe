@@ -1,17 +1,34 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import recipeData from "@/data/recipes.json";
+import { useEffect, useMemo, useState } from "react";
 import RecipeCard from "@/components/RecipeCard";
 
 export default function HomePage() {
   const [selected, setSelected] = useState("All");
+  const [recipeData, setRecipeData] = useState({ categories: [], recipes: [] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/recipes")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setRecipeData(data);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const categories = ["All", ...recipeData.categories];
 
   const filtered = useMemo(() => {
     if (selected === "All") return recipeData.recipes;
     return recipeData.recipes.filter((r) => r.category === selected);
-  }, [selected]);
+  }, [selected, recipeData]);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -39,7 +56,9 @@ export default function HomePage() {
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <p className="text-neutral-500">Loading recipes…</p>
+      ) : filtered.length === 0 ? (
         <p className="text-neutral-500">No recipes in this category yet.</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">

@@ -4,7 +4,7 @@ import ChapterEditor from "@/components/ChapterEditor";
 
 export default async function EditRecipePage({ params }) {
   const { slug } = await params;
-  const recipe = getRecipeBySlug(slug);
+  const recipe = await getRecipeBySlug(slug);
   if (!recipe) notFound();
 
   return (
@@ -14,8 +14,8 @@ export default async function EditRecipePage({ params }) {
       </h1>
       <p className="mt-2 text-sm text-neutral-600">
         Existing step data has been loaded below. Reload the source video
-        file to scrub and fine-tune timestamps, then export and merge back
-        into <code className="rounded bg-neutral-100 px-1">data/recipes.json</code>.
+        file to scrub and fine-tune timestamps, then click{" "}
+        <strong>Publish to site</strong> to save your changes live.
       </p>
       <div className="mt-6">
         <ChapterEditor initialRecipe={recipe} />

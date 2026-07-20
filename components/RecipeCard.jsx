@@ -31,10 +31,9 @@ export default function RecipeCard({ recipe }) {
     </div>
   );
 
-  // Note: there's no login system yet, so this edit shortcut is visible to
-  // anyone using the app, not just an "admin" — fine while it's just you
-  // testing locally, but this should sit behind real auth before real
-  // users see it.
+  // The edit link itself is visible to anyone browsing the home page, but
+  // /admin/:path* is gated by Basic Auth (see proxy.js), so following it
+  // prompts for credentials before anything editable loads.
   return (
     <div className="group relative h-full">
       {isActive ? (

@@ -22,13 +22,8 @@ export default function UploadPage() {
         </li>
         <li>Load the same video below and paste that script&apos;s JSON output into &ldquo;Import AI-suggested chapters&rdquo; to prefill the editor.</li>
         <li>Scrub through, fix any timestamps or labels that are off, and add/remove steps as needed.</li>
-        <li>Copy or download the final JSON, drop the video file into <code className="rounded bg-neutral-100 px-1">public/videos/</code>, and merge the JSON into <code className="rounded bg-neutral-100 px-1">data/recipes.json</code>.</li>
+        <li>Click <strong>Publish to site</strong> — the video uploads directly to storage and the recipe goes live immediately.</li>
       </ol>
-      <p className="mt-2 text-xs text-neutral-400">
-        This prototype doesn&apos;t have a server-side upload yet — everything
-        below runs locally in your browser tab. That&apos;s the next thing to
-        wire up before this goes to real users.
-      </p>
 
       <div className="mt-6">
         <ChapterEditor />

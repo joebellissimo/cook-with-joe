@@ -1,15 +1,15 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getAllRecipes, getRecipeBySlug } from "@/lib/recipes";
+import { getRecipeBySlug } from "@/lib/recipes";
 import RecipePlayer from "@/components/RecipePlayer";
 
-export async function generateStaticParams() {
-  return getAllRecipes().map((r) => ({ slug: r.slug }));
-}
+// Recipes are published live via Blob storage and can change at any time,
+// so slugs aren't known at build time — every request renders on demand
+// instead of pre-rendering a fixed set of slugs.
 
 export default async function RecipePage({ params }) {
   const { slug } = await params;
-  const recipe = getRecipeBySlug(slug);
+  const recipe = await getRecipeBySlug(slug);
 
   if (!recipe) notFound();
 
