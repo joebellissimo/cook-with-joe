@@ -33,8 +33,13 @@ export default function UploadWithImport() {
         intro: body.intro || "",
         ingredients: Array.isArray(body.ingredients) ? body.ingredients : [],
         tips: Array.isArray(body.tips) ? body.tips : [],
-        // Timestamps are left blank for manual tagging once a video is
-        // attached — this draft has no video, just written content.
+        // Populated only when the source page had a detectable video/image —
+        // already uploaded to Blob server-side, so the video loads straight
+        // into the scrubber below with nothing left to re-upload.
+        video: body.video || "",
+        thumbnail: body.thumbnail || "",
+        // Timestamps are still left blank for manual in/out tagging — the
+        // import brings the video in, but chapter-tagging is unchanged.
         steps: Array.isArray(body.steps)
           ? body.steps.map((s) => ({
               label: s.label || "",

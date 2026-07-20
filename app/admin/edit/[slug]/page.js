@@ -13,9 +13,9 @@ export default async function EditRecipePage({ params }) {
         Edit chapters — {recipe.title}
       </h1>
       <p className="mt-2 text-sm text-neutral-600">
-        Existing step data has been loaded below. Reload the source video
-        file to scrub and fine-tune timestamps, then click{" "}
-        <strong>Publish to site</strong> to save your changes live.
+        Existing step data and video have been loaded below — scrub and
+        fine-tune timestamps, then click <strong>Publish to site</strong> to
+        save your changes live.
       </p>
       <div className="mt-6">
         <ChapterEditor initialRecipe={recipe} />

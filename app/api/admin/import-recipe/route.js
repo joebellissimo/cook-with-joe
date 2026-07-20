@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { put } from "@vercel/blob";
 import Anthropic from "@anthropic-ai/sdk";
 
 const RECIPE_DRAFT_SCHEMA = {
@@ -25,6 +26,23 @@ const RECIPE_DRAFT_SCHEMA = {
   required: ["title", "category", "intro", "ingredients", "tips", "steps"],
   additionalProperties: false,
 };
+
+function slugify(text) {
+  const slug = (text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "import";
+}
+
+function resolveUrl(maybeRelative, baseUrl) {
+  if (!maybeRelative) return null;
+  try {
+    return new URL(maybeRelative, baseUrl).href;
+  } catch {
+    return null;
+  }
+}
 
 // Find a schema.org Recipe node in a page's JSON-LD blocks — handles a bare
 // Recipe object, an array of nodes, or nodes nested under "@graph".
@@ -112,6 +130,57 @@ function draftFromJsonLd(recipe) {
   };
 }
 
+// schema.org Recipe.video: a VideoObject (or array of them), or occasionally
+// a bare URL string. VideoObject exposes the actual file at contentUrl, or a
+// player page at embedUrl.
+function videoUrlFromRecipeNode(recipe) {
+  const video = recipe?.video;
+  if (!video) return null;
+  const node = Array.isArray(video) ? video[0] : video;
+  if (typeof node === "string") return node;
+  return node?.contentUrl || node?.embedUrl || null;
+}
+
+// schema.org Recipe.image: a URL string, an ImageObject (or array of either).
+function imageUrlFromRecipeNode(recipe) {
+  const image = recipe?.image;
+  if (!image) return null;
+  const node = Array.isArray(image) ? image[0] : image;
+  if (typeof node === "string") return node;
+  return node?.url || null;
+}
+
+// Fallback for pages with no usable JSON-LD Recipe: read the raw <video>
+// element's src, or its first <source src="...">.
+function findVideoElementSrc(html) {
+  const directSrc = html.match(/<video\b[^>]*\bsrc=["']([^"']+)["']/i);
+  if (directSrc) return directSrc[1];
+
+  const videoBlock = html.match(/<video\b[^>]*>([\s\S]*?)<\/video>/i);
+  if (videoBlock) {
+    const sourceSrc = videoBlock[1].match(/<source\b[^>]*\bsrc=["']([^"']+)["']/i);
+    if (sourceSrc) return sourceSrc[1];
+  }
+
+  return null;
+}
+
+function findVideoPoster(html) {
+  const match = html.match(/<video\b[^>]*\bposter=["']([^"']+)["']/i);
+  return match ? match[1] : null;
+}
+
+function findOgImage(html) {
+  let match = html.match(
+    /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i
+  );
+  if (match) return match[1];
+  match = html.match(
+    /<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image["']/i
+  );
+  return match ? match[1] : null;
+}
+
 function htmlToReadableText(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -126,6 +195,28 @@ function htmlToReadableText(html) {
     .replace(/&#0?39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Fetches a discovered asset and uploads it to Blob. Returns null (rather
+// than throwing) on any failure, so a missing or broken video/thumbnail
+// never fails the whole import — the chef just gets a draft without it.
+async function uploadAssetToBlob({ sourceUrl, pathname, fallbackContentType }) {
+  if (!sourceUrl) return null;
+  try {
+    const res = await fetch(sourceUrl);
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") || fallbackContentType;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const blob = await put(pathname, buffer, {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType,
+    });
+    return blob.url;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(request) {
@@ -154,76 +245,108 @@ export async function POST(request) {
     );
   }
 
+  let draft;
+  let videoSourceUrl = null;
+  let thumbnailSourceUrl = null;
+
   const ldJsonRecipe = extractLdJsonRecipe(html);
   if (ldJsonRecipe) {
-    return NextResponse.json(draftFromJsonLd(ldJsonRecipe));
-  }
+    draft = draftFromJsonLd(ldJsonRecipe);
+    videoSourceUrl = resolveUrl(videoUrlFromRecipeNode(ldJsonRecipe), url);
+    thumbnailSourceUrl =
+      resolveUrl(imageUrlFromRecipeNode(ldJsonRecipe), url) ||
+      resolveUrl(findVideoPoster(html), url) ||
+      resolveUrl(findOgImage(html), url);
+  } else {
+    const text = htmlToReadableText(html).slice(0, 20000);
+    if (!text) {
+      return NextResponse.json(
+        { error: "Couldn't find any readable content on that page." },
+        { status: 422 }
+      );
+    }
 
-  const text = htmlToReadableText(html).slice(0, 20000);
-  if (!text) {
-    return NextResponse.json(
-      { error: "Couldn't find any readable content on that page." },
-      { status: 422 }
-    );
-  }
+    const anthropic = new Anthropic();
 
-  const anthropic = new Anthropic();
-
-  let response;
-  try {
-    response = await anthropic.messages.create({
-      model: "claude-opus-4-8",
-      max_tokens: 4096,
-      thinking: { type: "adaptive" },
-      system:
-        "You extract recipe content from messy webpage text. Ignore navigation, ads, comments, and unrelated content, and find the actual recipe. Guess a sensible category (e.g. Meats, Appetizers, Cocktails, Desserts, Vegetarian) from context if none is explicit. Split the directions into individual steps: label is a short few-word summary, direction is the full instruction sentence.",
-      messages: [
-        {
-          role: "user",
-          content: `Extract the recipe from this page text:\n\n${text}`,
+    let response;
+    try {
+      response = await anthropic.messages.create({
+        model: "claude-opus-4-8",
+        max_tokens: 4096,
+        thinking: { type: "adaptive" },
+        system:
+          "You extract recipe content from messy webpage text. Ignore navigation, ads, comments, and unrelated content, and find the actual recipe. Guess a sensible category (e.g. Meats, Appetizers, Cocktails, Desserts, Vegetarian) from context if none is explicit. Split the directions into individual steps: label is a short few-word summary, direction is the full instruction sentence.",
+        messages: [
+          {
+            role: "user",
+            content: `Extract the recipe from this page text:\n\n${text}`,
+          },
+        ],
+        output_config: {
+          format: { type: "json_schema", schema: RECIPE_DRAFT_SCHEMA },
         },
-      ],
-      output_config: {
-        format: { type: "json_schema", schema: RECIPE_DRAFT_SCHEMA },
-      },
-    });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err.message || "Recipe extraction failed." },
-      { status: 502 }
-    );
+      });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err.message || "Recipe extraction failed." },
+        { status: 502 }
+      );
+    }
+
+    if (response.stop_reason === "refusal") {
+      return NextResponse.json(
+        { error: "The extraction was declined for this page's content." },
+        { status: 422 }
+      );
+    }
+    if (response.stop_reason === "max_tokens") {
+      return NextResponse.json(
+        { error: "That recipe was too long to extract in one pass." },
+        { status: 422 }
+      );
+    }
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    if (!textBlock) {
+      return NextResponse.json(
+        { error: "The extraction came back empty — try a different page." },
+        { status: 502 }
+      );
+    }
+
+    try {
+      draft = JSON.parse(textBlock.text);
+    } catch {
+      return NextResponse.json(
+        { error: "The extraction came back incomplete — try again or a different page." },
+        { status: 502 }
+      );
+    }
+
+    videoSourceUrl = resolveUrl(findVideoElementSrc(html), url);
+    thumbnailSourceUrl =
+      resolveUrl(findVideoPoster(html), url) || resolveUrl(findOgImage(html), url);
   }
 
-  if (response.stop_reason === "refusal") {
-    return NextResponse.json(
-      { error: "The extraction was declined for this page's content." },
-      { status: 422 }
-    );
-  }
-  if (response.stop_reason === "max_tokens") {
-    return NextResponse.json(
-      { error: "That recipe was too long to extract in one pass." },
-      { status: 422 }
-    );
-  }
+  const slug = slugify(draft.title);
+  const timestamp = Date.now();
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock) {
-    return NextResponse.json(
-      { error: "The extraction came back empty — try a different page." },
-      { status: 502 }
-    );
-  }
+  const [videoBlobUrl, thumbnailBlobUrl] = await Promise.all([
+    uploadAssetToBlob({
+      sourceUrl: videoSourceUrl,
+      pathname: `videos/${slug}-${timestamp}.mp4`,
+      fallbackContentType: "video/mp4",
+    }),
+    uploadAssetToBlob({
+      sourceUrl: thumbnailSourceUrl,
+      pathname: `thumbnails/${slug}-${timestamp}.jpg`,
+      fallbackContentType: "image/jpeg",
+    }),
+  ]);
 
-  let draft;
-  try {
-    draft = JSON.parse(textBlock.text);
-  } catch {
-    return NextResponse.json(
-      { error: "The extraction came back incomplete — try again or a different page." },
-      { status: 502 }
-    );
-  }
-
-  return NextResponse.json(draft);
+  return NextResponse.json({
+    ...draft,
+    ...(videoBlobUrl ? { video: videoBlobUrl } : {}),
+    ...(thumbnailBlobUrl ? { thumbnail: thumbnailBlobUrl } : {}),
+  });
 }

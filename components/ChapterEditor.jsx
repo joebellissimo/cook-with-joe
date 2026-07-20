@@ -32,7 +32,10 @@ export default function ChapterEditor({ initialRecipe }) {
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const [videoSrc, setVideoSrc] = useState(null);
+  // A recipe's video is a real, browser-playable Blob URL once published (or
+  // imported), so it can load straight into the scrubber — no need to
+  // re-pick the local file just to preview it.
+  const [videoSrc, setVideoSrc] = useState(initialRecipe?.video || null);
   const [videoFile, setVideoFile] = useState(null);
   const [videoPath, setVideoPath] = useState(initialRecipe?.video || "");
   const [title, setTitle] = useState(initialRecipe?.title || "");
