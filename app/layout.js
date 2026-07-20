@@ -12,6 +12,7 @@ export const metadata = {
   title: "Cook With Joe",
   description:
     "Step-by-step cooking videos you can control by voice or by tapping the step you're on.",
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({ children }) {

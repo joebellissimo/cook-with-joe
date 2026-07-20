@@ -228,7 +228,6 @@ export default function RecipePlayer({ recipe }) {
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               playsInline
-              controls
             />
             {segmentEnded && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70 text-white">
