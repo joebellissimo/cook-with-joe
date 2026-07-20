@@ -44,6 +44,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       setActiveStepId(step.id);
       setSegmentMode(true);
       setSegmentEnded(false);
+      setShowIngredients(false);
     },
     []
   );
@@ -69,6 +70,7 @@ export default function RecipePlayer({ recipe, onRead }) {
     if (video.paused) {
       video.play().then(() => setIsPlaying(true)).catch(() => {});
       setSegmentEnded(false);
+      setShowIngredients(false);
     } else {
       video.pause();
       setIsPlaying(false);
@@ -86,6 +88,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       .then(() => setIsPlaying(true))
       .catch(() => {});
     setSegmentEnded(false);
+    setShowIngredients(false);
   }, []);
 
   const handleRestartVideo = useCallback(() => {
@@ -98,6 +101,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       .then(() => setIsPlaying(true))
       .catch(() => {});
     setSegmentEnded(false);
+    setShowIngredients(false);
   }, []);
 
   const handleContinuePlaying = useCallback(() => {
@@ -107,6 +111,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       .then(() => setIsPlaying(true))
       .catch(() => {});
     setSegmentEnded(false);
+    setShowIngredients(false);
   }, []);
 
   const toggleIngredientChecked = useCallback((index) => {
@@ -116,6 +121,30 @@ export default function RecipePlayer({ recipe, onRead }) {
       else next.add(index);
       return next;
     });
+  }, []);
+
+  // Downward-swipe-to-dismiss on the ingredients panel. Tracked in refs
+  // (not state) since touchmove fires continuously and shouldn't trigger a
+  // re-render — only touchend acts on the accumulated drag distance.
+  const ingredientsTouchStartY = useRef(null);
+  const ingredientsTouchDeltaY = useRef(0);
+
+  const handleIngredientsTouchStart = useCallback((e) => {
+    ingredientsTouchStartY.current = e.touches[0].clientY;
+    ingredientsTouchDeltaY.current = 0;
+  }, []);
+
+  const handleIngredientsTouchMove = useCallback((e) => {
+    if (ingredientsTouchStartY.current == null) return;
+    ingredientsTouchDeltaY.current = e.touches[0].clientY - ingredientsTouchStartY.current;
+  }, []);
+
+  const handleIngredientsTouchEnd = useCallback(() => {
+    if (ingredientsTouchDeltaY.current > 50) {
+      setShowIngredients(false);
+    }
+    ingredientsTouchStartY.current = null;
+    ingredientsTouchDeltaY.current = 0;
   }, []);
 
   const handleTimeUpdate = useCallback(() => {
@@ -191,6 +220,12 @@ export default function RecipePlayer({ recipe, onRead }) {
           break;
         case "pause":
           handlePause();
+          break;
+        case "show-ingredients":
+          setShowIngredients(true);
+          break;
+        case "hide-ingredients":
+          setShowIngredients(false);
           break;
         default:
           break;
@@ -329,6 +364,9 @@ export default function RecipePlayer({ recipe, onRead }) {
                 hands-free mode. */}
             {recipe.ingredients?.length > 0 && (
               <div
+                onTouchStart={handleIngredientsTouchStart}
+                onTouchMove={handleIngredientsTouchMove}
+                onTouchEnd={handleIngredientsTouchEnd}
                 className={`absolute inset-x-0 bottom-0 z-20 max-h-[70%] overflow-y-auto rounded-t-2xl bg-cream p-4 shadow-xl transition-transform duration-300 md:hidden ${
                   showIngredients ? "translate-y-0" : "pointer-events-none translate-y-full"
                 }`}
