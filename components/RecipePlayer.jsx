@@ -11,6 +11,10 @@ import { playIngredientCheckedSound, playIngredientUncheckedSound } from "@/lib/
 export default function RecipePlayer({ recipe, onRead }) {
   const steps = recipe.steps;
   const videoRef = useRef(null);
+  // The two independently-scrollable regions, for voice-driven scrolling —
+  // whichever is on-screen ("active") at the time depends on showIngredients.
+  const stepsListRef = useRef(null);
+  const ingredientsListRef = useRef(null);
 
   const [activeStepId, setActiveStepId] = useState(steps[0]?.id ?? null);
   const [loopEnabled, setLoopEnabled] = useState(false);
@@ -255,6 +259,26 @@ export default function RecipePlayer({ recipe, onRead }) {
         case "hide-ingredients":
           setShowIngredients(false);
           break;
+        case "scroll-down": {
+          const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
+          el?.scrollBy({ top: el.clientHeight, behavior: "smooth" });
+          break;
+        }
+        case "scroll-up": {
+          const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
+          el?.scrollBy({ top: -el.clientHeight, behavior: "smooth" });
+          break;
+        }
+        case "scroll-top": {
+          const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
+          el?.scrollTo({ top: 0, behavior: "smooth" });
+          break;
+        }
+        case "scroll-bottom": {
+          const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
+          el?.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          break;
+        }
         default:
           break;
       }
@@ -262,6 +286,7 @@ export default function RecipePlayer({ recipe, onRead }) {
     [
       steps,
       recipe.ingredients,
+      showIngredients,
       playStep,
       handleNext,
       handlePrevious,
@@ -393,6 +418,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                 hands-free mode. */}
             {recipe.ingredients?.length > 0 && (
               <div
+                ref={ingredientsListRef}
                 onTouchStart={handleIngredientsTouchStart}
                 onTouchMove={handleIngredientsTouchMove}
                 onTouchEnd={handleIngredientsTouchEnd}
@@ -511,7 +537,10 @@ export default function RecipePlayer({ recipe, onRead }) {
             reverts to being a normal 3rd grid column and the control bar
             (md:hidden) takes no space. */}
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:flex-none md:overflow-visible md:px-0 md:pt-0">
+          <div
+            ref={stepsListRef}
+            className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:flex-none md:overflow-visible md:px-0 md:pt-0"
+          >
             <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
               Steps
             </h2>
