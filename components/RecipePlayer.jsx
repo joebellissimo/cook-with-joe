@@ -177,7 +177,7 @@ export default function RecipePlayer({ recipe, onRead }) {
 
   const handleVoiceCommand = useCallback(
     (transcript) => {
-      const action = matchVoiceCommand(transcript, steps);
+      const action = matchVoiceCommand(transcript, steps, recipe.ingredients);
 
       if (action && typeof action === "object" && action.type === "goto-step") {
         playStep(action.step);
@@ -186,6 +186,22 @@ export default function RecipePlayer({ recipe, onRead }) {
       if (action && typeof action === "object" && action.type === "loop-step") {
         setLoopEnabled(true);
         playStep(action.step);
+        return;
+      }
+      if (action && typeof action === "object" && action.type === "check-ingredient") {
+        // Explicitly set checked (not a toggle) — saying "check off eggs"
+        // when eggs is already checked shouldn't accidentally uncheck it.
+        setCheckedIngredients((prev) => new Set(prev).add(action.index));
+        setShowIngredients(true);
+        return;
+      }
+      if (action && typeof action === "object" && action.type === "uncheck-ingredient") {
+        setCheckedIngredients((prev) => {
+          const next = new Set(prev);
+          next.delete(action.index);
+          return next;
+        });
+        setShowIngredients(true);
         return;
       }
 
@@ -233,6 +249,7 @@ export default function RecipePlayer({ recipe, onRead }) {
     },
     [
       steps,
+      recipe.ingredients,
       playStep,
       handleNext,
       handlePrevious,
