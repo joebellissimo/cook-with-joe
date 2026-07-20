@@ -261,7 +261,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       <div className="flex min-h-0 flex-1 flex-col md:grid md:flex-none md:grid-cols-3 md:gap-6">
         {/* Video section — 2/3 of the viewport height on mobile. */}
         <div className="flex min-h-0 flex-[2] flex-col md:col-span-2 md:block md:flex-none">
-          <div className="relative min-h-0 flex-1 overflow-hidden bg-black shadow md:flex-none md:h-auto md:rounded-xl">
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-black shadow md:flex md:h-auto md:flex-none md:items-center md:justify-center md:rounded-xl">
             {/* Mobile-only title/category overlay, anchored to the top edge
                 of the video instead of centered like the step-finished
                 overlay below — small text, non-blocking of the frame. The
@@ -286,11 +286,16 @@ export default function RecipePlayer({ recipe, onRead }) {
 
             <video
               ref={videoRef}
-              // object-cover crops to fill the frame without distorting the
-              // picture — full-bleed on mobile, and within the 16:9 box at
-              // md and up (where aspect-video/h-auto replace the mobile
-              // h-full sizing).
-              className="h-full w-full object-cover md:aspect-video md:h-auto"
+              // Mobile: full-bleed, object-cover crops to fill the frame —
+              // a deliberate, different choice for the locked full-screen
+              // phone view. Desktop/tablet: the video isn't forced into a
+              // 16:9 box (imported recipes can be portrait or any other
+              // shape) — it renders at its own aspect ratio, capped by the
+              // column's width and a 70vh height, with object-contain so
+              // the full frame is always visible. The wrapper's black
+              // background shows through as letterboxing wherever the
+              // video doesn't fill that box.
+              className="h-full w-full object-cover md:h-auto md:w-auto md:max-h-[70vh] md:max-w-full md:object-contain"
               src={recipe.video}
               onTimeUpdate={handleTimeUpdate}
               onPlay={() => setIsPlaying(true)}
