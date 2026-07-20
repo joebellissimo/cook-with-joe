@@ -31,6 +31,11 @@ function fmt(n) {
 export default function ChapterEditor({ initialRecipe }) {
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
+  // The slug this recipe was originally loaded with — fixed at mount, not
+  // the (editable) slug field's current value. Lets publish detect a rename
+  // and tell the server to remove the old entry instead of leaving it
+  // behind as an orphaned duplicate.
+  const originalSlugRef = useRef(initialRecipe?.slug || null);
 
   // A recipe's video is a real, browser-playable Blob URL once published (or
   // imported), so it can load straight into the scrubber — no need to
@@ -202,10 +207,16 @@ export default function ChapterEditor({ initialRecipe }) {
       setPublishState("saving");
       const finalRecipe = { ...recipe, video: videoUrl };
 
+      const originalSlug = originalSlugRef.current;
+      const slugChanged = Boolean(originalSlug && originalSlug !== finalRecipe.slug);
+
       const res = await fetch("/api/admin/recipes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(finalRecipe),
+        body: JSON.stringify({
+          recipe: finalRecipe,
+          ...(slugChanged ? { originalSlug } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -216,6 +227,9 @@ export default function ChapterEditor({ initialRecipe }) {
       setVideoPath(videoUrl);
       setVideoFile(null);
       setPublishState("success");
+      // The new slug is now this recipe's slug of record — a second publish
+      // in the same session shouldn't try to delete an already-gone entry.
+      originalSlugRef.current = finalRecipe.slug;
     } catch (err) {
       setPublishState("error");
       setPublishMessage(err.message || "Something went wrong while publishing.");
