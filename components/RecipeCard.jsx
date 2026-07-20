@@ -9,8 +9,18 @@ export default function RecipeCard({ recipe }) {
         isActive ? "hover:shadow-md hover:border-brand/40" : "opacity-60"
       }`}
     >
-      <div className="mb-3 flex aspect-video items-center justify-center rounded-lg bg-cream text-3xl">
-        {isActive ? "▶" : "🔒"}
+      <div className="relative mb-3 flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-cream text-3xl">
+        {recipe.thumbnail && (
+          // eslint-disable-next-line @next/next/no-img-element -- plain <img>, no next/image config for Blob's dynamic subdomain
+          <img
+            src={recipe.thumbnail}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+        <span className={recipe.thumbnail ? "relative text-white drop-shadow" : "relative"}>
+          {isActive ? "▶" : "🔒"}
+        </span>
       </div>
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-medium text-ink">{recipe.title}</h3>
