@@ -209,12 +209,23 @@ export default function RecipePlayer({ recipe }) {
           <div className="relative min-h-0 flex-1 overflow-hidden bg-black shadow md:flex-none md:h-auto md:rounded-xl">
             {/* Mobile-only title/category overlay, anchored to the top edge
                 of the video instead of centered like the step-finished
-                overlay below — small text, non-blocking of the frame. */}
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/70 via-black/20 to-transparent px-3 pb-6 pt-2.5 md:hidden">
-              <p className="text-[10px] font-medium uppercase tracking-widest text-white/80">
-                {recipe.category}
-              </p>
-              <h1 className="text-sm font-medium text-white">{recipe.title}</h1>
+                overlay below — small text, non-blocking of the frame. The
+                site header is hidden on this page below md, so this also
+                carries a back link home. */}
+            <div className="absolute inset-x-0 top-0 z-10 flex items-start gap-2 bg-gradient-to-b from-black/70 via-black/20 to-transparent px-3 pb-6 pt-2.5 md:hidden">
+              <Link
+                href="/"
+                aria-label="Back to recipes"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/30 text-white"
+              >
+                ←
+              </Link>
+              <div className="pointer-events-none min-w-0">
+                <p className="text-[10px] font-medium uppercase tracking-widest text-white/80">
+                  {recipe.category}
+                </p>
+                <h1 className="truncate text-sm font-medium text-white">{recipe.title}</h1>
+              </div>
             </div>
 
             <video
