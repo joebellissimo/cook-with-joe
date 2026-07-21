@@ -30,6 +30,16 @@ export default function RecipePlayer({ recipe, onRead }) {
   // Next/Previous/Repeat — at which point loop/stop-and-replay behavior
   // kicks in for that step.
   const [segmentMode, setSegmentMode] = useState(false);
+  // Resuming with "play" right after a step ends (the Replay/Next choice
+  // is showing) would otherwise re-trigger that same step's end-boundary
+  // check on the very next timeupdate, since currentTime is already at/past
+  // it — pausing again almost immediately. This flag means "keep playing
+  // through subsequent step boundaries instead of pausing at each one,"
+  // entered only via that specific resume (see handlePlay/handleTogglePlay
+  // below) and cleared by any explicit step navigation (playStep) or by
+  // turning looping on, both of which mean the user wants normal per-step
+  // behavior again.
+  const [continuousMode, setContinuousMode] = useState(false);
   // 1 (normal) or 0.5 (half speed). Only sticks around across repeats while
   // the current step is looping — any actual segment change (a different
   // step, or leaving segment mode) resets it, per the voice-command spec
@@ -64,6 +74,10 @@ export default function RecipePlayer({ recipe, onRead }) {
       setSegmentMode(true);
       setSegmentEnded(false);
       setShowIngredients(false);
+      // Any explicit "go to this step" — including replaying the same one
+      // — is a manual navigation, which per spec drops back to normal
+      // pause-at-step-end behavior rather than continuing to play through.
+      setContinuousMode(false);
       if (rate !== undefined) setPlaybackRate(rate);
       else if (!isSameStep) setPlaybackRate(1);
     },
@@ -89,14 +103,21 @@ export default function RecipePlayer({ recipe, onRead }) {
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
+      // Resuming specifically from the step-end paused/choice state means
+      // "keep going" rather than "resume this same step" — otherwise we'd
+      // immediately re-hit the same end boundary and pause right back.
+      if (segmentEnded) setContinuousMode(true);
       video.play().then(() => setIsPlaying(true)).catch(() => {});
       setSegmentEnded(false);
       setShowIngredients(false);
     } else {
+      // A manual pause mid-continuous-play doesn't cancel continuousMode —
+      // saying/clicking "play" again should just resume it, not require
+      // re-triggering.
       video.pause();
       setIsPlaying(false);
     }
-  }, []);
+  }, [segmentEnded]);
 
   const handlePause = useCallback(() => {
     videoRef.current?.pause();
@@ -104,13 +125,14 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, []);
 
   const handlePlay = useCallback(() => {
+    if (segmentEnded) setContinuousMode(true);
     videoRef.current
       ?.play()
       .then(() => setIsPlaying(true))
       .catch(() => {});
     setSegmentEnded(false);
     setShowIngredients(false);
-  }, []);
+  }, [segmentEnded]);
 
   const handleRestartVideo = useCallback(() => {
     const video = videoRef.current;
@@ -124,6 +146,7 @@ export default function RecipePlayer({ recipe, onRead }) {
     setSegmentEnded(false);
     setShowIngredients(false);
     setPlaybackRate(1);
+    setContinuousMode(false);
   }, []);
 
   const handleContinuePlaying = useCallback(() => {
@@ -135,6 +158,7 @@ export default function RecipePlayer({ recipe, onRead }) {
     setSegmentEnded(false);
     setShowIngredients(false);
     setPlaybackRate(1);
+    setContinuousMode(false);
   }, []);
 
   const toggleIngredientChecked = useCallback(
@@ -200,6 +224,22 @@ export default function RecipePlayer({ recipe, onRead }) {
     }
 
     if (!activeStep) return;
+
+    if (continuousMode) {
+      // Resumed via "play" from a step-end pause — keep playing through
+      // subsequent step boundaries instead of re-pausing at each one, but
+      // still follow the playhead so the active step highlight advances,
+      // same as plain (non-segment) continuous playback does above.
+      const current = steps.find(
+        (s) => video.currentTime >= s.start && video.currentTime < s.end
+      );
+      if (current && current.id !== activeStepId) {
+        setActiveStepId(current.id);
+        setPlaybackRate(1);
+      }
+      return;
+    }
+
     if (video.currentTime >= activeStep.end - 0.12) {
       if (loopEnabled) {
         video.currentTime = activeStep.start;
@@ -210,7 +250,7 @@ export default function RecipePlayer({ recipe, onRead }) {
         setPlaybackRate(1);
       }
     }
-  }, [segmentMode, steps, activeStepId, activeStep, loopEnabled]);
+  }, [segmentMode, continuousMode, steps, activeStepId, activeStep, loopEnabled]);
 
   const handleVoiceCommand = useCallback(
     (transcript) => {
@@ -275,6 +315,10 @@ export default function RecipePlayer({ recipe, onRead }) {
         case "loop-on":
           setLoopEnabled(true);
           setSegmentMode(true);
+          // Otherwise a stale continuousMode from a prior "keep playing
+          // through" resume would skip the loop-boundary check entirely
+          // below, silently ignoring this.
+          setContinuousMode(false);
           break;
         case "loop-off":
           setLoopEnabled(false);
@@ -349,8 +393,13 @@ export default function RecipePlayer({ recipe, onRead }) {
         setLoopEnabled(checked);
         // Checking this while just watching continuously should
         // immediately start looping the step you're currently in,
-        // not silently do nothing until you also click a step.
-        if (checked) setSegmentMode(true);
+        // not silently do nothing until you also click a step. Also
+        // cancels continuousMode — otherwise a stale "keep playing
+        // through" resume would skip the loop-boundary check entirely.
+        if (checked) {
+          setSegmentMode(true);
+          setContinuousMode(false);
+        }
         // Unchecking is the manual equivalent of "loop off" — same reset.
         else setPlaybackRate(1);
       }}
