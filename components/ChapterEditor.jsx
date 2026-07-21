@@ -36,6 +36,10 @@ export default function ChapterEditor({ initialRecipe }) {
   // and tell the server to remove the old entry instead of leaving it
   // behind as an orphaned duplicate.
   const originalSlugRef = useRef(initialRecipe?.slug || null);
+  // Not user-editable (no UI for it yet — single-chef app for now), just
+  // carried through so republishing an existing recipe doesn't silently
+  // drop it. Defaults to "joe" for brand-new recipes.
+  const ownerIdRef = useRef(initialRecipe?.ownerId || "joe");
 
   // A recipe's video is a real, browser-playable Blob URL once published (or
   // imported), so it can load straight into the scrubber — no need to
@@ -105,6 +109,7 @@ export default function ChapterEditor({ initialRecipe }) {
     return {
       slug: slug || "untitled-recipe",
       title: title || "Untitled recipe",
+      ownerId: ownerIdRef.current,
       category,
       premium,
       description: "",

@@ -22,8 +22,14 @@ export async function POST(request) {
 
   const existingIndex = db.recipes.findIndex((r) => r.slug === recipe.slug);
   if (existingIndex >= 0) {
+    // Backstop, not the primary source: the editor already carries this
+    // through, but a client that omits it shouldn't be able to silently
+    // wipe an existing recipe's owner on republish.
+    recipe.ownerId = recipe.ownerId || db.recipes[existingIndex].ownerId || "joe";
     db.recipes[existingIndex] = recipe;
   } else {
+    // No multi-chef support yet — every recipe is "joe"'s until that lands.
+    recipe.ownerId = recipe.ownerId || "joe";
     db.recipes.push(recipe);
   }
 

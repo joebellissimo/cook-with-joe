@@ -32,6 +32,7 @@ export default function UploadWithImport() {
       setImportedRecipe({
         title: body.title || "",
         slug: body.slug || "",
+        ownerId: body.ownerId || "joe",
         category: body.category || "Meats",
         intro: body.intro || "",
         ingredients: Array.isArray(body.ingredients) ? body.ingredients : [],

@@ -367,6 +367,11 @@ export async function POST(request) {
   return NextResponse.json({
     ...draft,
     slug,
+    // No multi-chef support yet — every imported draft is "joe"'s until
+    // that lands. (The publish step in app/api/admin/recipes/route.js
+    // stamps this too, as a backstop — this just carries it through from
+    // the start of the pipeline.)
+    ownerId: "joe",
     ...(videoResult.url ? { video: videoResult.url } : {}),
     ...(thumbnailResult.url ? { thumbnail: thumbnailResult.url } : {}),
     ...(thumbnailWarning ? { thumbnailWarning } : {}),

@@ -64,9 +64,11 @@ try {
 
 const existingIndex = db.recipes.findIndex((r) => r.slug === recipe.slug);
 if (existingIndex >= 0) {
+  recipe.ownerId = recipe.ownerId || db.recipes[existingIndex].ownerId || "joe";
   db.recipes[existingIndex] = recipe;
   console.log(`Updated existing recipe "${recipe.slug}".`);
 } else {
+  recipe.ownerId = recipe.ownerId || "joe";
   db.recipes.push(recipe);
   console.log(`Added new recipe "${recipe.slug}".`);
 }

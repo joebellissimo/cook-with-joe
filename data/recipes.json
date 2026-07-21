@@ -10,6 +10,7 @@
     {
       "slug": "demo-onion-pasta-sauce",
       "title": "Quick Onion Pasta Sauce (Demo)",
+      "ownerId": "joe",
       "category": "Vegetarian",
       "premium": false,
       "description": "A sample recipe used to demo the player: step-by-step chapters, loop mode, and voice control. Swap in your own video and steps whenever you're ready.",
@@ -71,6 +72,7 @@
     {
       "slug": "coming-soon-steak",
       "title": "Pan-Seared Steak",
+      "ownerId": "joe",
       "category": "Meats",
       "premium": false,
       "description": "Upload a video for this recipe to activate it.",
@@ -81,6 +83,7 @@
     {
       "slug": "coming-soon-wings",
       "title": "Crispy Baked Wings",
+      "ownerId": "joe",
       "category": "Appetizers",
       "premium": false,
       "description": "Upload a video for this recipe to activate it.",
@@ -91,6 +94,7 @@
     {
       "slug": "coming-soon-margarita",
       "title": "Classic Margarita",
+      "ownerId": "joe",
       "category": "Cocktails",
       "premium": true,
       "description": "Upload a video for this recipe to activate it. Marked as a premium/subscriber recipe example.",
@@ -101,6 +105,7 @@
     {
       "slug": "coming-soon-tiramisu",
       "title": "Tiramisu",
+      "ownerId": "joe",
       "category": "Desserts",
       "premium": true,
       "description": "Upload a video for this recipe to activate it. Marked as a premium/subscriber recipe example.",
@@ -111,6 +116,7 @@
     {
       "slug": "meatballs",
       "title": "Meatballs",
+      "ownerId": "joe",
       "category": "Meats",
       "premium": false,
       "description": "",
