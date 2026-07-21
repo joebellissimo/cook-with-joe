@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import StepList from "@/components/StepList";
 import WatchReadToggle from "@/components/WatchReadToggle";
@@ -30,6 +30,15 @@ export default function RecipePlayer({ recipe, onRead }) {
   // Next/Previous/Repeat — at which point loop/stop-and-replay behavior
   // kicks in for that step.
   const [segmentMode, setSegmentMode] = useState(false);
+  // 1 (normal) or 0.5 (half speed). Only sticks around across repeats while
+  // the current step is looping — any actual segment change (a different
+  // step, or leaving segment mode) resets it, per the voice-command spec
+  // below. Applied to the <video> element via the effect right after this.
+  const [playbackRate, setPlaybackRate] = useState(1);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
 
   const activeIndex = useMemo(
     () => steps.findIndex((s) => s.id === activeStepId),
@@ -38,9 +47,14 @@ export default function RecipePlayer({ recipe, onRead }) {
   const activeStep = activeIndex >= 0 ? steps[activeIndex] : null;
 
   const playStep = useCallback(
-    (step) => {
+    (step, { rate } = {}) => {
       const video = videoRef.current;
       if (!video || !step) return;
+      // Replaying the SAME step (e.g. the "repeat" command, or re-clicking
+      // the step you're already on) isn't a segment change, so an active
+      // half-speed loop shouldn't be reset just because of it — only an
+      // actual jump to a different step resets the rate.
+      const isSameStep = step.id === activeStepId;
       video.currentTime = step.start;
       video
         .play()
@@ -50,8 +64,10 @@ export default function RecipePlayer({ recipe, onRead }) {
       setSegmentMode(true);
       setSegmentEnded(false);
       setShowIngredients(false);
+      if (rate !== undefined) setPlaybackRate(rate);
+      else if (!isSameStep) setPlaybackRate(1);
     },
-    []
+    [activeStepId]
   );
 
   const goToIndex = useCallback(
@@ -107,6 +123,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       .catch(() => {});
     setSegmentEnded(false);
     setShowIngredients(false);
+    setPlaybackRate(1);
   }, []);
 
   const handleContinuePlaying = useCallback(() => {
@@ -117,6 +134,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       .catch(() => {});
     setSegmentEnded(false);
     setShowIngredients(false);
+    setPlaybackRate(1);
   }, []);
 
   const toggleIngredientChecked = useCallback(
@@ -167,12 +185,16 @@ export default function RecipePlayer({ recipe, onRead }) {
 
     if (!segmentMode) {
       // Continuous playback: just keep the step list highlight following
-      // the playhead — no stopping or looping at step boundaries.
+      // the playhead — no stopping or looping at step boundaries. Crossing
+      // into a new step here still counts as a "segment change" for speed
+      // purposes, so half speed doesn't silently carry across the whole
+      // video.
       const current = steps.find(
         (s) => video.currentTime >= s.start && video.currentTime < s.end
       );
       if (current && current.id !== activeStepId) {
         setActiveStepId(current.id);
+        setPlaybackRate(1);
       }
       return;
     }
@@ -185,6 +207,7 @@ export default function RecipePlayer({ recipe, onRead }) {
         video.pause();
         setIsPlaying(false);
         setSegmentEnded(true);
+        setPlaybackRate(1);
       }
     }
   }, [segmentMode, steps, activeStepId, activeStep, loopEnabled]);
@@ -200,6 +223,15 @@ export default function RecipePlayer({ recipe, onRead }) {
       if (action && typeof action === "object" && action.type === "loop-step") {
         setLoopEnabled(true);
         playStep(action.step);
+        return;
+      }
+      if (action && typeof action === "object" && action.type === "play-step-half-speed") {
+        playStep(action.step, { rate: 0.5 });
+        return;
+      }
+      if (action && typeof action === "object" && action.type === "loop-step-half-speed") {
+        setLoopEnabled(true);
+        playStep(action.step, { rate: 0.5 });
         return;
       }
       if (action && typeof action === "object" && action.type === "check-ingredient") {
@@ -246,12 +278,19 @@ export default function RecipePlayer({ recipe, onRead }) {
           break;
         case "loop-off":
           setLoopEnabled(false);
+          setPlaybackRate(1);
           break;
         case "play":
           handlePlay();
           break;
         case "pause":
           handlePause();
+          break;
+        case "half-speed":
+          setPlaybackRate(0.5);
+          break;
+        case "normal-speed":
+          setPlaybackRate(1);
           break;
         case "show-ingredients":
           setShowIngredients(true);
@@ -312,6 +351,8 @@ export default function RecipePlayer({ recipe, onRead }) {
         // immediately start looping the step you're currently in,
         // not silently do nothing until you also click a step.
         if (checked) setSegmentMode(true);
+        // Unchecking is the manual equivalent of "loop off" — same reset.
+        else setPlaybackRate(1);
       }}
       className="accent-brand"
     />
@@ -391,6 +432,11 @@ export default function RecipePlayer({ recipe, onRead }) {
               onPause={() => setIsPlaying(false)}
               playsInline
             />
+            {playbackRate !== 1 && (
+              <div className="absolute bottom-3 right-3 z-10 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white">
+                0.5x
+              </div>
+            )}
             {segmentEnded && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70 text-white">
                 <p className="text-sm">Step finished</p>
@@ -521,12 +567,14 @@ export default function RecipePlayer({ recipe, onRead }) {
               step&rdquo;, &ldquo;loop on&rdquo;, &ldquo;loop off&rdquo;,
               &ldquo;previous step&rdquo;, &ldquo;play&rdquo;,
               &ldquo;pause&rdquo;/&ldquo;stop&rdquo;, &ldquo;keep
-              playing&rdquo;, &ldquo;start from the beginning&rdquo; — or
-              reference a step by name, like &ldquo;play{" "}
-              {steps[0]?.label?.toLowerCase()}&rdquo; or &ldquo;loop{" "}
-              {steps[0]?.label?.toLowerCase()}&rdquo; (jumps there and keeps
-              repeating it until you say &ldquo;stop&rdquo; or ask for
-              another step).
+              playing&rdquo;, &ldquo;start from the beginning&rdquo;,
+              &ldquo;half speed&rdquo;/&ldquo;slow motion&rdquo;,
+              &ldquo;normal speed&rdquo; — or reference a step by name, like
+              &ldquo;play {steps[0]?.label?.toLowerCase()}&rdquo; or
+              &ldquo;loop {steps[0]?.label?.toLowerCase()}&rdquo; (jumps
+              there and keeps repeating it until you say &ldquo;stop&rdquo;
+              or ask for another step), or add &ldquo;at half speed&rdquo;
+              to either.
             </p>
           </div>
         </div>
