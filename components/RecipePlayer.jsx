@@ -511,10 +511,10 @@ export default function RecipePlayer({ recipe, onRead }) {
                 above for the steps-list highlight) so it updates from
                 every path that changes it: natural playback progression,
                 continuous play, looping, clicking a step, or a voice
-                command. Solid (not translucent) background, unlike the
-                0.5x badge, so it stays legible over any video frame. */}
+                command. White/75% background with dark text (rather than
+                the reverse) so it reads clearly over any video frame. */}
             {activeStep && (
-              <div className="absolute bottom-3 left-3 z-10 max-w-[75%] truncate rounded-full bg-ink px-3 py-1 text-xs font-medium text-white">
+              <div className="absolute bottom-3 left-3 z-10 max-w-[75%] truncate rounded-full bg-white/75 px-3 py-1 text-left text-lg font-bold text-ink">
                 {activeStep.label}
               </div>
             )}
