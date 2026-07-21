@@ -358,6 +358,32 @@ export default function RecipePlayer({ recipe, onRead }) {
     />
   );
 
+  // Mobile step controls (Repeat, Loop this step, Ingredients) — shared
+  // between their current, reachable position (between the video and the
+  // scrollable steps list) and an invisible same-size placeholder left
+  // behind at the bottom bar's original spot, so that reserved space stays
+  // put rather than collapsing. Same reuse pattern as loopCheckbox above:
+  // one element, mounted in two places, always in sync.
+  const stepControlsRow = (
+    <div className="flex items-center justify-center gap-4 text-xs text-muted">
+      <button onClick={handleRepeat} className="flex items-center gap-1">
+        ↻ Repeat
+      </button>
+      <label className="flex items-center gap-1.5">
+        {loopCheckbox}
+        Loop this step
+      </label>
+      {recipe.ingredients?.length > 0 && (
+        <button
+          onClick={() => setShowIngredients((v) => !v)}
+          className="flex items-center gap-1"
+        >
+          🧾 Ingredients
+        </button>
+      )}
+    </div>
+  );
+
   return (
     // Below md: a full-viewport (h-dvh) stack that takes over the screen —
     // video / scrollable steps / control bar — so only the steps list
@@ -579,6 +605,16 @@ export default function RecipePlayer({ recipe, onRead }) {
           </div>
         </div>
 
+        {/* Repeat / Loop this step / Ingredients — mobile only, sitting
+            right between the video and the scrollable steps list instead
+            of the very bottom of the screen, which was too far from a
+            resting thumb to reach comfortably. Desktop already has its own
+            repeat/loop controls in the inline row above (no separate
+            ingredients toggle there), so this is md:hidden. */}
+        <div className="shrink-0 border-y border-ink/10 bg-white px-3 py-2 md:hidden">
+          {stepControlsRow}
+        </div>
+
         {/* Bottom third — steps list + control bar grouped together so they
             share the remaining 1/3 of viewport height on mobile. At md and
             up this wrapper carries no layout of its own; the steps list
@@ -632,22 +668,14 @@ export default function RecipePlayer({ recipe, onRead }) {
                 🎙️
               </button>
             </div>
-            <div className="mt-1.5 flex items-center justify-center gap-4 px-3 text-xs text-muted">
-              <button onClick={handleRepeat} className="flex items-center gap-1">
-                ↻ Repeat
-              </button>
-              <label className="flex items-center gap-1.5">
-                {loopCheckbox}
-                Loop this step
-              </label>
-              {recipe.ingredients?.length > 0 && (
-                <button
-                  onClick={() => setShowIngredients((v) => !v)}
-                  className="flex items-center gap-1"
-                >
-                  🧾 Ingredients
-                </button>
-              )}
+            {/* Intentionally left blank: Repeat/Loop/Ingredients used to
+                live here, right at the bottom edge — too far from a
+                resting thumb to reach comfortably. They've moved up to
+                between the video and the steps list (see above). This
+                invisible copy reserves the exact same height so the
+                bottom bar doesn't resize/jump. */}
+            <div className="mt-1.5 px-3" aria-hidden="true">
+              <div className="invisible">{stepControlsRow}</div>
             </div>
           </div>
         </div>
