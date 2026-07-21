@@ -507,6 +507,17 @@ export default function RecipePlayer({ recipe, onRead }) {
               onPause={() => setIsPlaying(false)}
               playsInline
             />
+            {/* Current-step title — reuses activeStep (already computed
+                above for the steps-list highlight) so it updates from
+                every path that changes it: natural playback progression,
+                continuous play, looping, clicking a step, or a voice
+                command. Solid (not translucent) background, unlike the
+                0.5x badge, so it stays legible over any video frame. */}
+            {activeStep && (
+              <div className="absolute bottom-3 left-3 z-10 max-w-[75%] truncate rounded-full bg-ink px-3 py-1 text-xs font-medium text-white">
+                {activeStep.label}
+              </div>
+            )}
             {playbackRate !== 1 && (
               <div className="absolute bottom-3 right-3 z-10 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white">
                 0.5x

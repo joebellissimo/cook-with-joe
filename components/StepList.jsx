@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -5,6 +9,25 @@ function formatTime(seconds) {
 }
 
 export default function StepList({ steps, activeStepId, onSelect }) {
+  const activeItemRef = useRef(null);
+  // Skip the very first run (mount) — auto-centering the initial step on
+  // page load would jump the scroll position before the user's done
+  // anything; it should only kick in once the active step actually changes.
+  const isFirstRender = useRef(true);
+
+  // Keeps the active step centered in the scrollable list as it advances —
+  // whether from natural playback progression, continuous play, looping, a
+  // click, or a voice command. Only runs when activeStepId itself changes,
+  // so it can't fight an in-progress manual scroll (which doesn't touch
+  // this value) — it just re-centers cleanly on the next real step change.
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    activeItemRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeStepId]);
+
   if (!steps.length) {
     return (
       <p className="text-sm text-muted">
@@ -18,7 +41,7 @@ export default function StepList({ steps, activeStepId, onSelect }) {
       {steps.map((step, index) => {
         const isActive = step.id === activeStepId;
         return (
-          <li key={step.id}>
+          <li key={step.id} ref={isActive ? activeItemRef : null}>
             <button
               onClick={() => onSelect(step)}
               className={`w-full rounded-lg border px-3 py-1.5 text-left text-sm transition md:py-2 ${
