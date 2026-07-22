@@ -565,15 +565,17 @@ export default function RecipePlayer({ recipe, onRead }) {
             )}
 
             {/* Quick-glance ingredients checklist — slides up over the video
-                on mobile without pausing playback or otherwise leaving
-                hands-free mode. */}
+                without pausing playback or otherwise leaving hands-free
+                mode. The swipe-to-dismiss touch handlers below are inert on
+                desktop (no touch events fire), where the ✕ button is the
+                close affordance instead. */}
             {recipe.ingredients?.length > 0 && (
               <div
                 ref={ingredientsListRef}
                 onTouchStart={handleIngredientsTouchStart}
                 onTouchMove={handleIngredientsTouchMove}
                 onTouchEnd={handleIngredientsTouchEnd}
-                className={`absolute inset-x-0 bottom-0 z-20 max-h-[70%] overflow-y-auto rounded-t-2xl bg-cream p-4 shadow-xl transition-transform duration-300 md:hidden ${
+                className={`absolute inset-x-0 bottom-0 z-20 max-h-[70%] overflow-y-auto rounded-t-2xl bg-cream p-4 shadow-xl transition-transform duration-300 ${
                   showIngredients ? "translate-y-0" : "pointer-events-none translate-y-full"
                 }`}
               >
@@ -643,6 +645,15 @@ export default function RecipePlayer({ recipe, onRead }) {
                 {loopCheckbox}
                 Loop this step
               </label>
+
+              {recipe.ingredients?.length > 0 && (
+                <button
+                  onClick={() => setShowIngredients((v) => !v)}
+                  className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
+                >
+                  🧾 Ingredients
+                </button>
+              )}
 
               <button
                 onClick={voice.toggle}
