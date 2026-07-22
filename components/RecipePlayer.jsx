@@ -45,6 +45,15 @@ export default function RecipePlayer({ recipe, onRead }) {
   // step, or leaving segment mode) resets it, per the voice-command spec
   // below. Applied to the <video> element via the effect right after this.
   const [playbackRate, setPlaybackRate] = useState(1);
+  // Whichever step's [start, end) range actually contains the playhead
+  // right now, or null during a gap — before the first step starts, after
+  // the last one ends, or any untagged space between two. Powers only
+  // display concerns (the title overlay, the steps-list highlight/auto-
+  // scroll) — deliberately kept separate from activeStepId, which tracks
+  // the step the user last explicitly navigated to and legitimately keeps
+  // pointing at it through a gap, since Next/Previous/Repeat still need a
+  // sensible step to act relative to while just watching through one.
+  const [currentStep, setCurrentStep] = useState(null);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = playbackRate;
@@ -71,6 +80,11 @@ export default function RecipePlayer({ recipe, onRead }) {
         .then(() => setIsPlaying(true))
         .catch(() => {});
       setActiveStepId(step.id);
+      // Set eagerly rather than waiting for the next timeupdate — we just
+      // moved the playhead to this step's own start, so it's unambiguously
+      // "within range" immediately, and this keeps the overlay/highlight
+      // from lagging a beat behind a click or voice command.
+      setCurrentStep(step);
       setSegmentMode(true);
       setSegmentEnded(false);
       setShowIngredients(false);
@@ -207,17 +221,24 @@ export default function RecipePlayer({ recipe, onRead }) {
     const video = videoRef.current;
     if (!video) return;
 
+    // Whichever step's range the playhead is actually inside right now, or
+    // undefined in a gap. Computed once here (previously duplicated in the
+    // two branches below) and always drives currentStep — regardless of
+    // mode, so the overlay/highlight correctly goes blank in a gap even
+    // during segment-focused playback, not just continuous/continuousMode.
+    const withinStep = steps.find(
+      (s) => video.currentTime >= s.start && video.currentTime < s.end
+    );
+    setCurrentStep(withinStep ?? null);
+
     if (!segmentMode) {
       // Continuous playback: just keep the step list highlight following
       // the playhead — no stopping or looping at step boundaries. Crossing
       // into a new step here still counts as a "segment change" for speed
       // purposes, so half speed doesn't silently carry across the whole
       // video.
-      const current = steps.find(
-        (s) => video.currentTime >= s.start && video.currentTime < s.end
-      );
-      if (current && current.id !== activeStepId) {
-        setActiveStepId(current.id);
+      if (withinStep && withinStep.id !== activeStepId) {
+        setActiveStepId(withinStep.id);
         setPlaybackRate(1);
       }
       return;
@@ -230,11 +251,8 @@ export default function RecipePlayer({ recipe, onRead }) {
       // subsequent step boundaries instead of re-pausing at each one, but
       // still follow the playhead so the active step highlight advances,
       // same as plain (non-segment) continuous playback does above.
-      const current = steps.find(
-        (s) => video.currentTime >= s.start && video.currentTime < s.end
-      );
-      if (current && current.id !== activeStepId) {
-        setActiveStepId(current.id);
+      if (withinStep && withinStep.id !== activeStepId) {
+        setActiveStepId(withinStep.id);
         setPlaybackRate(1);
       }
       return;
@@ -507,15 +525,16 @@ export default function RecipePlayer({ recipe, onRead }) {
               onPause={() => setIsPlaying(false)}
               playsInline
             />
-            {/* Current-step title — reuses activeStep (already computed
-                above for the steps-list highlight) so it updates from
-                every path that changes it: natural playback progression,
-                continuous play, looping, clicking a step, or a voice
-                command. White/75% background with dark text (rather than
-                the reverse) so it reads clearly over any video frame. */}
-            {activeStep && (
+            {/* Current-step title — driven by currentStep, which is null
+                whenever the playhead isn't actually within any step's
+                range (before the first step, after the last, or a gap
+                between two), so this hides itself in those spots rather
+                than sticking on a stale label. White/75% background with
+                dark text (rather than the reverse) so it reads clearly
+                over any video frame. */}
+            {currentStep && (
               <div className="absolute bottom-3 left-3 z-10 max-w-[75%] truncate rounded-full bg-white/75 px-3 py-1 text-left text-lg font-bold text-ink">
-                {activeStep.label}
+                {currentStep.label}
               </div>
             )}
             {playbackRate !== 1 && (
@@ -688,7 +707,10 @@ export default function RecipePlayer({ recipe, onRead }) {
             <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
               Steps
             </h2>
-            <StepList steps={steps} activeStepId={activeStepId} onSelect={playStep} />
+            {/* currentStep (not activeStepId) drives the highlight/auto-
+                scroll — null in a gap, which StepList already handles by
+                just not matching any item, no highlight, no scroll. */}
+            <StepList steps={steps} activeStepId={currentStep?.id ?? null} onSelect={playStep} />
           </div>
 
           {/* Mobile-only control bar, sitting right below the steps list —
