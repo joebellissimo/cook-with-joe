@@ -82,6 +82,32 @@ export function useVoiceCommands(onCommand) {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) return;
+      // Device locked or app backgrounded: stop listening and require the
+      // user to manually re-engage voice control afterward. Setting
+      // listeningRef.current = false before stop() ensures the onend
+      // auto-restart handler above sees "not listening" and doesn't fight
+      // this by immediately restarting recognition.
+      if (!listeningRef.current) return;
+      listeningRef.current = false;
+      setListening(false);
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // ignore
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const start = useCallback(() => {
     if (!recognitionRef.current) return;
     listeningRef.current = true;
