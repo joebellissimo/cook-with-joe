@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Fraunces } from "next/font/google";
 import styles from "./landing.module.css";
@@ -28,31 +28,83 @@ const RECIPE_TILES = [
   { file: "strawberry-shortcake-overnight-oats.jpg", title: "Strawberry Shortcake Overnight Oats" },
 ];
 
-// The tilted background wall wants more tiles than the 10 source images —
-// repeat the set rather than stretching or distorting individual photos to
-// fill the grid. heroGrid's CSS now sizes columns by a fixed pixel floor
-// (auto-fill/minmax) rather than a fixed count, so the real column count —
-// and therefore how many rows are needed to cover the grid's full height —
-// varies per viewport (fewer, wider columns and more rows on a tall
-// portrait phone; more, narrower columns and fewer rows on a wide
-// desktop). 150 is a generous fixed supply sized for the tallest/widest
-// realistic combination (e.g. a tall portrait phone needs more rows; a
-// wide desktop needs more columns) — any surplus beyond what a given
-// viewport needs just overflows past the grid's own box and is clipped by
-// .hero's overflow:hidden, same as the rotation/scale buffer already is.
-const HERO_TILE_COUNT = 150;
+// Fixed pixel footprint, not aspect-ratio/column-width-derived: a previous
+// attempt sized tiles via CSS aspect-ratio against an auto-fill column
+// width, so tile height shrank on narrow viewports while a single static
+// total tile count stayed fixed — on a narrow phone, few columns fit,
+// forcing far more rows than the box was actually tall, so the grid's real
+// content height ended up many times taller than its own declared box.
+// transform-origin computes from that declared box, not the overflowing
+// content, so rotating pushed distant rows sideways by huge, wildly
+// inconsistent amounts — visible as overlapping vertical strips rather
+// than a clean tiled field. Fixed px dimensions here, sized to the actual
+// measured wrap box in the HeroTileMosaic component below, keep row/column
+// counts proportional to the real viewport at any aspect ratio.
+const HERO_TILE_WIDTH = 150;
+const HERO_TILE_HEIGHT = 225;
+// Must match heroGrid's CSS `gap: 0.75rem` (assumes the standard 16px root
+// font-size, unchanged elsewhere in this project).
+const HERO_TILE_GAP = 12;
+
 // Plain `i % RECIPE_TILES.length` would repeat the exact same image straight
 // down every column (index only depends on column position, never row).
 // Shifting by a per-row offset instead spreads repeats out so a column
-// doesn't show the same photo twice in a row. The real column count is
-// runtime/viewport-dependent now (see heroGrid's auto-fill above), so this
-// assumes a representative width of 10 purely for shuffling variety, not
-// as a claim about the actual rendered column count.
-const HERO_SHUFFLE_WIDTH = 10;
-const heroTiles = Array.from({ length: HERO_TILE_COUNT }, (_, i) => {
-  const row = Math.floor(i / HERO_SHUFFLE_WIDTH);
+// doesn't show the same photo twice in a row.
+function tileForIndex(i, cols) {
+  const row = Math.floor(i / cols);
   return RECIPE_TILES[(i + row * 3) % RECIPE_TILES.length];
-});
+}
+
+// Measures its own wrapper box (already sized by heroGridWrap's CSS inset)
+// and computes exactly how many fixed-footprint columns/rows are needed to
+// cover it, rather than guessing one static total tile count for every
+// viewport. Renders nothing until the first measurement — a brief blank
+// beat on a decorative background is preferable to a wrong-shaped flash.
+function HeroTileMosaic() {
+  const wrapRef = useRef(null);
+  const [grid, setGrid] = useState(null);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+
+    const measure = () => {
+      const { width, height } = wrap.getBoundingClientRect();
+      // +1 on each axis is a small rounding/timing safety margin, not a
+      // coverage guess — the fit itself is computed exactly from the
+      // measured box.
+      const cols = Math.max(1, Math.ceil((width + HERO_TILE_GAP) / (HERO_TILE_WIDTH + HERO_TILE_GAP)) + 1);
+      const rows = Math.max(1, Math.ceil((height + HERO_TILE_GAP) / (HERO_TILE_HEIGHT + HERO_TILE_GAP)) + 1);
+      setGrid({ cols, rows });
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className={styles.heroGridWrap} aria-hidden="true" ref={wrapRef}>
+      {grid && (
+        <div
+          className={styles.heroGrid}
+          style={{ gridTemplateColumns: `repeat(${grid.cols}, ${HERO_TILE_WIDTH}px)` }}
+        >
+          {Array.from({ length: grid.cols * grid.rows }, (_, i) => {
+            const tile = tileForIndex(i, grid.cols);
+            return (
+              <div className={styles.heroTile} key={i}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- decorative background wall, not a next/image candidate */}
+                <img src={`/images/recipe-fpo/${tile.file}`} alt="" />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function LandingV2Page() {
   // The real SiteHeader/SiteFooter (rendered by the shared root
@@ -79,16 +131,7 @@ export default function LandingV2Page() {
     <div className={`${styles.page} ${fraunces.variable}`}>
       {/* ---------- Hero ---------- */}
       <section className={styles.hero}>
-        <div className={styles.heroGridWrap} aria-hidden="true">
-          <div className={styles.heroGrid}>
-            {heroTiles.map((tile, i) => (
-              <div className={styles.heroTile} key={i}>
-                {/* eslint-disable-next-line @next/next/no-img-element -- decorative background wall, not a next/image candidate */}
-                <img src={`/images/recipe-fpo/${tile.file}`} alt="" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <HeroTileMosaic />
         <div className={styles.heroOverlay} aria-hidden="true" />
 
         <div className={styles.heroContent}>

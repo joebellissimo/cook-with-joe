@@ -28,15 +28,14 @@
 
 .heroGrid {
   display: grid;
-  /* auto-fill with a fixed minmax floor keeps each tile's real pixel width
-     (and, via aspect-ratio below, its height) roughly constant regardless
-     of viewport width — a fixed column COUNT (the previous repeat(10, ...))
-     instead let tile width/height shrink on narrow viewports, so on a tall
-     portrait phone the row content fell far short of the grid's own
-     (vh-driven, still-tall) box height. The leftover space then got
-     distributed by the grid's default row-stretch behavior as gaps
-     scattered between rows instead of packing tiles contiguously. */
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  /* grid-template-columns is set inline (see page.js) from a JS-measured
+     column count, in lockstep with heroTile's fixed pixel footprint below
+     — see page.js for why this replaced auto-fill/aspect-ratio sizing.
+     grid-auto-rows is likewise a fixed px value (not content/aspect-ratio
+     driven), so total row content height scales predictably with however
+     many rows page.js decides are needed, instead of ballooning when only
+     a few columns fit on a narrow viewport. */
+  grid-auto-rows: 225px;
   align-content: start;
   gap: 0.75rem;
   width: 100%;
@@ -52,7 +51,8 @@
   position: relative;
   border-radius: 0.6rem;
   overflow: hidden;
-  aspect-ratio: 2 / 3;
+  width: 100%;
+  height: 100%;
   box-shadow: 0 10px 24px rgba(42, 42, 42, 0.12);
 }
 
