@@ -1,0 +1,468 @@
+.page {
+  /* Scoped to this page only — the rest of the app uses --color-brand
+     (slate) as its only accent. This route borrows a warm red for its
+     Netflix-inspired CTA without touching the shared theme in globals.css. */
+  --color-accent-red: #c1442d;
+  --color-accent-red-dark: #a8371f;
+  background: var(--color-cream);
+  color: var(--color-ink);
+  overflow-x: hidden;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  min-height: 92vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.heroGridWrap {
+  position: absolute;
+  inset: -10% -15%;
+  z-index: 0;
+}
+
+.heroGrid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0.9rem;
+  width: 130%;
+  height: 130%;
+  transform: rotate(-9deg) translateY(-4%);
+  transform-origin: center;
+}
+
+.heroTile {
+  position: relative;
+  border-radius: 0.6rem;
+  overflow: hidden;
+  aspect-ratio: 2 / 3;
+  box-shadow: 0 10px 24px rgba(42, 42, 42, 0.12);
+}
+
+.heroTile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.heroOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, var(--color-cream) 0%, rgba(251, 243, 232, 0.72) 16%, rgba(251, 243, 232, 0.55) 46%, rgba(251, 243, 232, 0.82) 78%, var(--color-cream) 100%);
+}
+
+.heroContent {
+  position: relative;
+  z-index: 2;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.heroEyebrow {
+  font-size: 0.75rem;
+}
+
+.headline {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-size: clamp(2.25rem, 6vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin-top: 0.75rem;
+  color: var(--color-ink);
+}
+
+.subhead {
+  margin-top: 1.25rem;
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.6;
+  color: var(--color-muted);
+  max-width: 38rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ctaRow {
+  margin-top: 2.25rem;
+  display: flex;
+  justify-content: center;
+}
+
+.ctaButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--color-accent-red);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1.05rem;
+  padding: 0.9rem 2.1rem;
+  border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(193, 58, 43, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.ctaButton:hover {
+  background: var(--color-accent-red-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(193, 58, 43, 0.4);
+}
+
+.ctaHint {
+  margin-top: 0.9rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+/* ---------- Feature rows ---------- */
+
+.features {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4.5rem;
+}
+
+.featureRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  align-items: center;
+}
+
+@media (min-width: 800px) {
+  .featureRow {
+    grid-template-columns: 1fr 1fr;
+    gap: 3.5rem;
+  }
+  .featureRowReverse .featureText {
+    order: 2;
+  }
+  .featureRowReverse .featureVisual {
+    order: 1;
+  }
+}
+
+.featureText {
+  text-align: center;
+}
+
+@media (min-width: 800px) {
+  .featureText {
+    text-align: left;
+  }
+}
+
+.featureTitle {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 600;
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  color: var(--color-ink);
+}
+
+.featureBody {
+  margin-top: 0.85rem;
+  font-size: 1.02rem;
+  line-height: 1.65;
+  color: var(--color-muted);
+}
+
+.featureVisual {
+  display: flex;
+  justify-content: center;
+}
+
+/* Mock device stack — "works on laptop, tablet, or phone" */
+.deviceStack {
+  position: relative;
+  width: 100%;
+  max-width: 20rem;
+  height: 13rem;
+}
+
+.deviceLaptop,
+.deviceTablet,
+.devicePhone {
+  position: absolute;
+  background: #fff;
+  border: 1px solid rgba(42, 42, 42, 0.12);
+  border-radius: 0.9rem;
+  box-shadow: 0 14px 30px rgba(42, 42, 42, 0.14);
+  overflow: hidden;
+}
+
+.deviceLaptop {
+  width: 15rem;
+  height: 9.5rem;
+  left: 0;
+  top: 1rem;
+}
+
+.deviceTablet {
+  width: 7.5rem;
+  height: 9.5rem;
+  right: 3.5rem;
+  top: 2.75rem;
+  z-index: 2;
+}
+
+.devicePhone {
+  width: 4.5rem;
+  height: 9rem;
+  right: 0;
+  top: 3.75rem;
+  z-index: 3;
+  border-radius: 1rem;
+}
+
+.deviceScreen {
+  position: absolute;
+  inset: 0.4rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(160deg, var(--color-cream), #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+
+/* Voice-control mock card */
+.voiceCard {
+  width: 100%;
+  max-width: 20rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(42, 42, 42, 0.1);
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(42, 42, 42, 0.1);
+  padding: 1.5rem;
+}
+
+.voiceMicRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.voiceMicDot {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: var(--color-accent-red);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.voiceWave {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.6rem;
+}
+
+.voiceWave span {
+  width: 0.2rem;
+  border-radius: 999px;
+  background: var(--color-brand);
+  opacity: 0.6;
+}
+
+.voicePhrases {
+  margin-top: 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.voicePhrase {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: var(--color-cream);
+  border: 1px solid rgba(42, 42, 42, 0.08);
+  color: var(--color-ink);
+}
+
+/* Step + ingredients mock card */
+.stepsCard {
+  width: 100%;
+  max-width: 20rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(42, 42, 42, 0.1);
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(42, 42, 42, 0.1);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.stepRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.5rem;
+}
+
+.stepRowActive {
+  background: var(--color-cream);
+  font-weight: 600;
+}
+
+.stepDot {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  color: var(--color-brand);
+}
+
+.stepRowActive .stepDot {
+  background: var(--color-brand);
+  color: #fff;
+}
+
+.stepDivider {
+  height: 1px;
+  background: rgba(42, 42, 42, 0.08);
+  margin: 0.3rem 0;
+}
+
+.ingredientRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+}
+
+.ingredientCheck {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.3rem;
+  border: 1.5px solid var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.ingredientChecked {
+  background: var(--color-brand);
+}
+
+/* ---------- Popular grid ---------- */
+
+.popular {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 5rem;
+}
+
+.popularHeading {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 600;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.popularGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .popularGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .popularGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.popularTile {
+  position: relative;
+  display: block;
+  border-radius: 0.8rem;
+  overflow: hidden;
+  aspect-ratio: 2 / 3;
+  box-shadow: 0 8px 18px rgba(42, 42, 42, 0.12);
+  border: 1px solid rgba(42, 42, 42, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.popularTile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 26px rgba(42, 42, 42, 0.18);
+}
+
+.popularTile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.popularCaption {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  padding: 0.6rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #fff;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.55));
+}
+
+.popularFooter {
+  margin-top: 2.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1.5px solid var(--color-ink);
+  color: var(--color-ink);
+  font-weight: 500;
+  font-size: 0.95rem;
+  padding: 0.7rem 1.6rem;
+  border-radius: 999px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.secondaryButton:hover {
+  background: var(--color-ink);
+  color: var(--color-cream);
+}
