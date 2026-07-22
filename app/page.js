@@ -187,7 +187,20 @@ export default function HomePage() {
 
   const handleStartCooking = (e) => {
     e.preventDefault();
-    document.getElementById("recipes")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const el = document.getElementById("recipes");
+    if (!el) return;
+    const targetY = el.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo({ top: targetY, behavior: "smooth" });
+    // Belt-and-suspenders: smooth-scroll animations have been observed to
+    // silently never complete in some environments (confirmed while
+    // building this fix). If the scroll hasn't actually moved shortly
+    // after, jump there directly rather than leaving the button looking
+    // like it did nothing.
+    setTimeout(() => {
+      if (Math.abs(window.scrollY - targetY) > 40) {
+        window.scrollTo({ top: targetY, behavior: "auto" });
+      }
+    }, 400);
   };
 
   return (
