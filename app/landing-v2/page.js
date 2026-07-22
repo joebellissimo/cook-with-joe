@@ -29,10 +29,20 @@ const RECIPE_TILES = [
 ];
 
 // The tilted background wall wants more tiles than the 10 source images —
-// repeat the set (offsetting the start each lap) rather than stretching or
-// distorting individual photos to fill the grid.
-const HERO_TILE_COUNT = 24;
-const heroTiles = Array.from({ length: HERO_TILE_COUNT }, (_, i) => RECIPE_TILES[i % RECIPE_TILES.length]);
+// repeat the set rather than stretching or distorting individual photos to
+// fill the grid. 60 tiles across the heroGrid's 10 columns gives 6 rows,
+// enough to cover the full hero height (not just a single diagonal strip)
+// after the grid's rotate+scale.
+const HERO_COLUMNS = 10;
+const HERO_TILE_COUNT = 60;
+// Plain `i % RECIPE_TILES.length` would repeat the exact same image straight
+// down every column (index only depends on column, never row, since each
+// row is HERO_COLUMNS wide). Shifting by a per-row offset instead spreads
+// repeats out so no column shows the same photo twice in a row.
+const heroTiles = Array.from({ length: HERO_TILE_COUNT }, (_, i) => {
+  const row = Math.floor(i / HERO_COLUMNS);
+  return RECIPE_TILES[(i + row * 3) % RECIPE_TILES.length];
+});
 
 export default function LandingV2Page() {
   // The real SiteHeader/SiteFooter (rendered by the shared root
