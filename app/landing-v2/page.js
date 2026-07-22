@@ -30,17 +30,27 @@ const RECIPE_TILES = [
 
 // The tilted background wall wants more tiles than the 10 source images —
 // repeat the set rather than stretching or distorting individual photos to
-// fill the grid. 60 tiles across the heroGrid's 10 columns gives 6 rows,
-// enough to cover the full hero height (not just a single diagonal strip)
-// after the grid's rotate+scale.
-const HERO_COLUMNS = 10;
-const HERO_TILE_COUNT = 60;
+// fill the grid. heroGrid's CSS now sizes columns by a fixed pixel floor
+// (auto-fill/minmax) rather than a fixed count, so the real column count —
+// and therefore how many rows are needed to cover the grid's full height —
+// varies per viewport (fewer, wider columns and more rows on a tall
+// portrait phone; more, narrower columns and fewer rows on a wide
+// desktop). 150 is a generous fixed supply sized for the tallest/widest
+// realistic combination (e.g. a tall portrait phone needs more rows; a
+// wide desktop needs more columns) — any surplus beyond what a given
+// viewport needs just overflows past the grid's own box and is clipped by
+// .hero's overflow:hidden, same as the rotation/scale buffer already is.
+const HERO_TILE_COUNT = 150;
 // Plain `i % RECIPE_TILES.length` would repeat the exact same image straight
-// down every column (index only depends on column, never row, since each
-// row is HERO_COLUMNS wide). Shifting by a per-row offset instead spreads
-// repeats out so no column shows the same photo twice in a row.
+// down every column (index only depends on column position, never row).
+// Shifting by a per-row offset instead spreads repeats out so a column
+// doesn't show the same photo twice in a row. The real column count is
+// runtime/viewport-dependent now (see heroGrid's auto-fill above), so this
+// assumes a representative width of 10 purely for shuffling variety, not
+// as a claim about the actual rendered column count.
+const HERO_SHUFFLE_WIDTH = 10;
 const heroTiles = Array.from({ length: HERO_TILE_COUNT }, (_, i) => {
-  const row = Math.floor(i / HERO_COLUMNS);
+  const row = Math.floor(i / HERO_SHUFFLE_WIDTH);
   return RECIPE_TILES[(i + row * 3) % RECIPE_TILES.length];
 });
 

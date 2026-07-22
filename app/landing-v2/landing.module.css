@@ -28,7 +28,16 @@
 
 .heroGrid {
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
+  /* auto-fill with a fixed minmax floor keeps each tile's real pixel width
+     (and, via aspect-ratio below, its height) roughly constant regardless
+     of viewport width — a fixed column COUNT (the previous repeat(10, ...))
+     instead let tile width/height shrink on narrow viewports, so on a tall
+     portrait phone the row content fell far short of the grid's own
+     (vh-driven, still-tall) box height. The leftover space then got
+     distributed by the grid's default row-stretch behavior as gaps
+     scattered between rows instead of packing tiles contiguously. */
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  align-content: start;
   gap: 0.75rem;
   width: 100%;
   height: 100%;
