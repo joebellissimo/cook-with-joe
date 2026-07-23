@@ -1,6 +1,6 @@
 # Cook With Joe — Development Status Log
 
-Last updated: 2026-07-23 (session 7)
+Last updated: 2026-07-23 (session 8)
 
 ## Architecture (confirmed working)
 
@@ -24,6 +24,16 @@ Last updated: 2026-07-23 (session 7)
   against preview URLs: a real authenticated browser session (or a Protection
   Bypass for Automation secret, under Project Settings → Deployment
   Protection, not yet set up) is required to reach them programmatically.
+- **Branch pushes don't always trigger a Vercel preview build** — discovered
+  2026-07-23 shipping the welcome overlay: pushing `welcome-overlay-fixes`
+  produced no deployment at all (confirmed via both the Vercel API and
+  `vercel ls` — no record, not even a failed one), unlike every prior
+  branch this session, which all auto-deployed normally. Root cause not
+  identified (Git integration/webhook, not a build failure). Worked
+  around each time by running `npx vercel deploy` directly from the
+  branch's local checkout, which reliably produces a real, reachable
+  preview URL tied to the same project. Worth checking the GitHub
+  integration under Project Settings → Git if this recurs.
 
 ## ✅ Git divergence resolved (2026-07-22)
 
@@ -96,7 +106,51 @@ with no divergence.
     Verified live with real speech on a Vercel preview deployment before
     merging, per the project's voice-control testing rule (see "Voice
     latency" below). Merged to `main` and pushed on 2026-07-23.
-12. **New home page — full replacement, merged and LIVE in production
+12. **First-visit welcome overlay on recipe pages** — shows once per
+    recipe per browser session (`sessionStorage`, keyed by slug, so it
+    naturally resets on tab/browser close but not on a same-session
+    reload) before playback starts: "Welcome to [recipe]! Shall we
+    review the ingredients needed first?" with "No, let's just get
+    cooking." and "Review ingredients" buttons, both with voice
+    equivalents. Shipped across three rounds, all verified live with
+    real speech on Vercel preview deployments before merging:
+    - **Initial build** (`recipe-welcome-overlay` branch): overlay UI in
+      `components/RecipePlayer.jsx`, new `dismiss-welcome` voice rule in
+      `lib/voiceCommands.js` ("let's get cooking"/"start cooking"/"skip"),
+      review path reusing the existing `show-ingredients` rule, mic
+      button pulse while the overlay is up and the mic is off.
+    - **Bug fix** (`welcome-overlay-fixes` branch): while the overlay was
+      showing, voice input still ran through the general step/ingredient
+      fuzzy matcher — a word shared with a step title (e.g.
+      "ingredients" colliding with a step titled "Hand mix ingredients")
+      could fuzzy-match to `goto-step` and start that step playing
+      *behind* the popup. Fixed generally, not per-keyword: overlay
+      voice input now calls `matchVoiceCommand` with empty
+      steps/ingredients arrays (disabling all fuzzy matching outright)
+      and short-circuits before the main command switch, so no command
+      other than dismiss/review can reach playback while the overlay is
+      up.
+    - **Polish pass** (same branch): button copy changed to "No, let's
+      just get cooking." (voice matcher updated to recognize "just"
+      too); overlay reordered to greeting → buttons → tip → a dedicated
+      mic toggle button directly below the tip; mic buttons (overlay +
+      existing desktop/mobile controls) now blink a slow orange CSS
+      animation (`mic-orange-pulse` in `app/globals.css`) instead of a
+      plain opacity pulse; tip text set in a handwritten Google Font
+      (Caveat, wired via `next/font/google` in `app/layout.js` the same
+      way the existing Jost font is, exposed as `--font-handwritten` /
+      `font-handwritten`).
+    - **Regression fix** (same branch, found in live testing after the
+      polish pass): saying "review ingredients" — the button's own
+      label, and the single most natural thing to say back to it — did
+      nothing via voice. Not caused by the fuzzy-matcher fix (the
+      `show-ingredients` rule is a fixed regex, independent of the
+      steps/ingredients arrays, confirmed via direct testing); the
+      regex had simply never included the word "review," only
+      "show"/"open." Broadened it, same pattern as the earlier "show me
+      the ingredients list" fix (entry 10 above).
+    - Merged to `main` and pushed 2026-07-23.
+13. **New home page — full replacement, merged and LIVE in production
     2026-07-22** (`home-page-v2` branch, merged to `main` at `c6d2956` via
     clean fast-forward from `34a3b74`). Replaces the old plain recipe-menu
     home page entirely. See the full session-5 write-up below for how this
@@ -451,10 +505,14 @@ enforcement, migration path) — still not started. Open decisions:
 2. ~~Build "mark step done" + checkmark~~ (feature backlog item 1 above)
    **Done 2026-07-23** — verified live with real speech on a preview
    deployment, merged to `main` and pushed. See "Feature backlog" above.
-3. Optional cleanup: add `BLOB_READ_WRITE_TOKEN` to `.env.local` for local
+3. ~~Build the recipe welcome overlay~~ **Done 2026-07-23** — including a
+   voice-routing bug fix, a polish pass, and a review-ingredients voice
+   regression fix, each verified live before merging. See entry 12 under
+   "Features shipped and confirmed working in production" above.
+4. Optional cleanup: add `BLOB_READ_WRITE_TOKEN` to `.env.local` for local
    dev, and/or fix the missing `.catch()` in `app/page.js`.
-4. Decide whether to pursue Chrome's on-device speech recognition.
-5. Decide Neon vs. Supabase and Auth.js vs. Clerk for Phase 1, then work
+5. Decide whether to pursue Chrome's on-device speech recognition.
+6. Decide Neon vs. Supabase and Auth.js vs. Clerk for Phase 1, then work
    through the signup checklist and kick off implementation.
-6. Revisit the bake-timer prompt (feature backlog item 2 above) now that
+7. Revisit the bake-timer prompt (feature backlog item 2 above) now that
    "mark step done" has shipped.
