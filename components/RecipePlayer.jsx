@@ -72,11 +72,14 @@ export default function RecipePlayer({ recipe, onRead }) {
   // Quick-glance ingredients checklist, slid up over the video on mobile —
   // doesn't pause playback or otherwise leave hands-free mode.
   const [showIngredients, setShowIngredients] = useState(false);
-  // Per-ingredient status, keyed by its index in recipe.ingredients:
-  // "have" (I have it — reviewed) or "need" (on the running "need to
-  // get" list) or absent (unset). Replaces the earlier plain checkmark —
-  // same session-only lifecycle as doneSteps below (resets on reload).
-  const [ingredientStatus, setIngredientStatus] = useState(() => new Map());
+  // Which ingredients are flagged "Need to get," by index in
+  // recipe.ingredients. Every ingredient defaults to "I have" (most
+  // people already have most things — they're only flagging
+  // exceptions), so there's no separate stored "have" state to track;
+  // "have" is just the absence of "need," backing the mutually-exclusive
+  // I-have/Need-to-get radio pair per row. Same session-only lifecycle
+  // as doneSteps below (resets on reload).
+  const [neededIngredients, setNeededIngredients] = useState(() => new Set());
   // "I need <word>" voice matches that tie between more than one real
   // ingredient (e.g. "garlic" against both "garlic" and "garlic powder")
   // surface a pick-one-or-more popup instead of guessing. Array of
@@ -84,13 +87,13 @@ export default function RecipePlayer({ recipe, onRead }) {
   const [ambiguousCandidates, setAmbiguousCandidates] = useState(null);
   const [ambiguousChecked, setAmbiguousChecked] = useState(() => new Set());
   // The "need to get" list itself — a single freeform editable text
-  // value (not derived from ingredientStatus), so the user can type
+  // value (not derived from neededIngredients), so the user can type
   // notes, fix typos, or add items that were never in the ingredient
-  // list at all. Checking/unchecking "Need to get" surgically adds or
-  // removes that ingredient's own line (see addIngredientLine/
+  // list at all. Selecting "Need to get" surgically adds or removes
+  // that ingredient's own line (see addIngredientLine/
   // removeIngredientLine above) rather than regenerating this whole
   // value, so manual edits survive. Session-only, same lifecycle as
-  // ingredientStatus below.
+  // neededIngredients above.
   const [needToGetText, setNeedToGetText] = useState("");
   // Brief confirmation after "Copy list" — auto-dismisses on its own.
   const [copyConfirmation, setCopyConfirmation] = useState(false);
@@ -278,54 +281,36 @@ export default function RecipePlayer({ recipe, onRead }) {
     setContinuousMode(false);
   }, []);
 
-  // Click on "I have" — toggles. Decided from current state rather than
-  // inside the setState updater, so the sound (a side effect) can't fire
-  // twice under React Strict Mode's dev-only double-invocation of
-  // updater functions (same reasoning as the old toggleIngredientChecked
-  // this replaces).
+  // Radio "I have" — selecting it is a no-op if it's already selected
+  // (the default), otherwise clears the "need" flag. Unlike a checkbox
+  // toggle, a radio has no "back to unset" state to return to — "have"
+  // itself IS that default.
   const setIngredientHave = useCallback(
     (index) => {
-      const previousStatus = ingredientStatus.get(index);
-      const willBeHave = previousStatus !== "have";
-      setIngredientStatus((prev) => {
-        const next = new Map(prev);
-        if (willBeHave) next.set(index, "have");
-        else next.delete(index);
+      if (!neededIngredients.has(index)) return;
+      setNeededIngredients((prev) => {
+        const next = new Set(prev);
+        next.delete(index);
         return next;
       });
-      // Switching a "need to get" ingredient to "have" (or clearing it)
-      // means it's no longer on the list — remove its line so the text
-      // doesn't silently drift out of sync with the checkbox state.
-      if (previousStatus === "need") {
-        const ingredientText = recipe.ingredients[index];
-        setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
-      }
-      if (willBeHave) playIngredientCheckedSound();
-      else playIngredientUncheckedSound();
+      const ingredientText = recipe.ingredients[index];
+      setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
+      playIngredientCheckedSound();
     },
-    [ingredientStatus, recipe.ingredients]
+    [neededIngredients, recipe.ingredients]
   );
 
-  // Click on "Need to get" — also toggles (unlike the voice path below,
-  // which explicitly sets — mirrors the mark-step-done/check-ingredient
-  // pattern elsewhere in this file).
+  // Radio "Need to get" — same no-op-if-already-selected shape as
+  // setIngredientHave above.
   const setIngredientNeed = useCallback(
     (index) => {
-      const willBeNeed = ingredientStatus.get(index) !== "need";
+      if (neededIngredients.has(index)) return;
+      setNeededIngredients((prev) => new Set(prev).add(index));
       const ingredientText = recipe.ingredients[index];
-      setIngredientStatus((prev) => {
-        const next = new Map(prev);
-        if (willBeNeed) next.set(index, "need");
-        else next.delete(index);
-        return next;
-      });
-      setNeedToGetText((prevText) =>
-        willBeNeed
-          ? addIngredientLine(prevText, ingredientText)
-          : removeIngredientLine(prevText, ingredientText)
-      );
+      setNeedToGetText((prevText) => addIngredientLine(prevText, ingredientText));
+      playIngredientUncheckedSound();
     },
-    [ingredientStatus, recipe.ingredients]
+    [neededIngredients, recipe.ingredients]
   );
 
   // Voice equivalents of the two ingredient actions above — extracted so
@@ -334,42 +319,32 @@ export default function RecipePlayer({ recipe, onRead }) {
   // without duplicating the state-mutation details in two places.
   const handleCheckIngredientAction = useCallback(
     (index) => {
-      // Repurposed for the "I have"/"Need to get" model: "check off
-      // eggs"/"got the eggs" now sets the "have" status. Explicitly set
-      // (not a toggle) — saying it twice shouldn't flip back to unset.
-      // If it was on the "need to get" list, it isn't anymore — remove
-      // its line so the text doesn't drift out of sync.
-      const wasNeed = ingredientStatus.get(index) === "need";
-      setIngredientStatus((prev) => new Map(prev).set(index, "have"));
+      // "check off eggs"/"got eggs"/"I have eggs" — confirms "have" (the
+      // default), clearing "need" if it was set. "uncheck"/"unmark" below
+      // ends up doing the same thing now that there's no third "unset"
+      // state left to distinguish them by — both are just "this
+      // ingredient is not on the need-to-get list."
+      const wasNeed = neededIngredients.has(index);
       if (wasNeed) {
+        setNeededIngredients((prev) => {
+          const next = new Set(prev);
+          next.delete(index);
+          return next;
+        });
         const ingredientText = recipe.ingredients[index];
         setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
       }
       playIngredientCheckedSound();
       setShowIngredients(true);
     },
-    [ingredientStatus, recipe.ingredients]
+    [neededIngredients, recipe.ingredients]
   );
 
   const handleUncheckIngredientAction = useCallback(
     (index) => {
-      // "uncheck eggs"/"unmark eggs" clears the status entirely,
-      // whichever it was — the voice-level inverse of "check off." Same
-      // need-to-get-list cleanup as check-ingredient above.
-      const wasNeed = ingredientStatus.get(index) === "need";
-      setIngredientStatus((prev) => {
-        const next = new Map(prev);
-        next.delete(index);
-        return next;
-      });
-      if (wasNeed) {
-        const ingredientText = recipe.ingredients[index];
-        setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
-      }
-      playIngredientUncheckedSound();
-      setShowIngredients(true);
+      handleCheckIngredientAction(index);
     },
-    [ingredientStatus, recipe.ingredients]
+    [handleCheckIngredientAction]
   );
 
   const handleNeedIngredientAction = useCallback(
@@ -378,7 +353,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       // Explicitly set (not toggle), same reasoning as check-ingredient
       // above.
       const ingredientText = recipe.ingredients[index];
-      setIngredientStatus((prev) => new Map(prev).set(index, "need"));
+      setNeededIngredients((prev) => new Set(prev).add(index));
       setNeedToGetText((prevText) => addIngredientLine(prevText, ingredientText));
       setShowIngredients(true);
     },
@@ -406,9 +381,9 @@ export default function RecipePlayer({ recipe, onRead }) {
   // Commits every checked candidate to the "need to get" list in one go
   // — no partial commit without this explicit confirmation.
   const confirmAmbiguousAddToList = useCallback(() => {
-    setIngredientStatus((prev) => {
-      const next = new Map(prev);
-      ambiguousChecked.forEach((index) => next.set(index, "need"));
+    setNeededIngredients((prev) => {
+      const next = new Set(prev);
+      ambiguousChecked.forEach((index) => next.add(index));
       return next;
     });
     setNeedToGetText((prevText) => {
@@ -1076,35 +1051,43 @@ export default function RecipePlayer({ recipe, onRead }) {
                   </button>
                 </div>
                 {/* Same grid-template-columns literal on the header and
-                    every row below is what keeps the two checkbox columns
+                    every row below is what keeps the two radio columns
                     aligned down the whole list — a fixed-width column
                     (not "auto") guarantees the header and every row agree
                     on width regardless of that row's own content, and
                     "items-start" plus the text column being its own grid
                     cell is what keeps a wrapped second line under the
-                    first line's text rather than sliding under a
-                    checkbox. Checkboxes lead (left), text follows. */}
-                <div className="grid grid-cols-[4.5rem_4.5rem_1fr] items-center gap-x-3 pb-1">
-                  <span className="text-center text-[10px] font-semibold uppercase leading-tight tracking-wide text-muted">
+                    first line's text rather than sliding under a radio.
+                    Radios lead (left), text follows. Each row is its own
+                    two-radio group (name keyed by index) — mutually
+                    exclusive, always exactly one selected, defaulting to
+                    "I have" (see neededIngredients above). No more
+                    crossed-off text when "have" is selected — the radio
+                    itself already shows the state clearly, and "have" is
+                    now the default for everything rather than a
+                    call-out-worthy exception. */}
+                <div className="grid grid-cols-[4.5rem_4.5rem_1fr] items-center gap-x-1.5 pb-1">
+                  <span className="text-center text-[10px] font-normal uppercase leading-tight tracking-wide text-muted">
                     I have
                   </span>
-                  <span className="text-center text-[10px] font-semibold uppercase leading-tight tracking-wide text-muted">
+                  <span className="text-center text-[10px] font-bold uppercase leading-tight tracking-wide text-muted">
                     Need to get
                   </span>
                   <span />
                 </div>
                 <ul className="space-y-2 text-sm">
                   {recipe.ingredients.map((ingredient, i) => {
-                    const status = ingredientStatus.get(i);
+                    const isNeed = neededIngredients.has(i);
                     return (
                       <li
                         key={i}
-                        className="grid grid-cols-[4.5rem_4.5rem_1fr] items-start gap-x-3 gap-y-1"
+                        className="grid grid-cols-[4.5rem_4.5rem_1fr] items-start gap-x-1.5 gap-y-1"
                       >
                         <span className="flex justify-center pt-0.5">
                           <input
-                            type="checkbox"
-                            checked={status === "have"}
+                            type="radio"
+                            name={`ingredient-status-${i}`}
+                            checked={!isNeed}
                             onChange={() => setIngredientHave(i)}
                             aria-label={`I have ${ingredient}`}
                             className="accent-brand"
@@ -1112,16 +1095,15 @@ export default function RecipePlayer({ recipe, onRead }) {
                         </span>
                         <span className="flex justify-center pt-0.5">
                           <input
-                            type="checkbox"
-                            checked={status === "need"}
+                            type="radio"
+                            name={`ingredient-status-${i}`}
+                            checked={isNeed}
                             onChange={() => setIngredientNeed(i)}
                             aria-label={`Need to get ${ingredient}`}
                             className="accent-brand"
                           />
                         </span>
-                        <span className={status === "have" ? "text-muted line-through" : "text-ink"}>
-                          {ingredient}
-                        </span>
+                        <span className="text-ink">{ingredient}</span>
                       </li>
                     );
                   })}
