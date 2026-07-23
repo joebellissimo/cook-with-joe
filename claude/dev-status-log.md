@@ -1,6 +1,6 @@
 # Cook With Joe — Development Status Log
 
-Last updated: 2026-07-23 (session 6)
+Last updated: 2026-07-23 (session 7)
 
 ## Architecture (confirmed working)
 
@@ -84,7 +84,19 @@ with no divergence.
     natural phrasing. Both verified live via preview deployment (desktop
     click test + voice command + mobile regression check) and merged to
     `main` on 2026-07-22.
-11. **New home page — full replacement, merged and LIVE in production
+11. **"Mark step done" + checkmark** — voice command "mark [step] done"
+    (e.g. "mark chop garlic done"), reusing the existing fuzzy step-name
+    matching in `lib/voiceCommands.js` (same matcher as "loop the sear
+    meat part"), plus a plain "mark done" for whichever step is currently
+    playing/active. Checkmark added to the left of each step in the
+    scrollable steps list (`components/RecipePlayer.jsx`,
+    `components/StepList.jsx`), independently clickable/toggleable, not
+    just voice-driven. State is session-only (resets on reload), same
+    lifecycle as the existing loop on/off state — no localStorage.
+    Verified live with real speech on a Vercel preview deployment before
+    merging, per the project's voice-control testing rule (see "Voice
+    latency" below). Merged to `main` and pushed on 2026-07-23.
+12. **New home page — full replacement, merged and LIVE in production
     2026-07-22** (`home-page-v2` branch, merged to `main` at `c6d2956` via
     clean fast-forward from `34a3b74`). Replaces the old plain recipe-menu
     home page entirely. See the full session-5 write-up below for how this
@@ -355,20 +367,23 @@ feature detection with a cloud-based fallback for other browsers.
 
 ## Feature backlog — voice "mark step done" + deferred bake-timer prompt
 
-Pitched by Joe 2026-07-22, not yet built. Two related but independently
-shippable pieces:
+Pitched by Joe 2026-07-22. Two related but independently shippable pieces:
 
-**1. "Mark step done" + checkmark — ready to build, prompt already
-written.** Voice command "mark [step] done" (e.g. "mark chop garlic
-done"), reusing the existing fuzzy step-name matching already used by
-"loop the sear meat part" / "play the sear meat part again" in
-`lib/voiceCommands.js` rather than building new matching from scratch.
-Also supports a simpler "mark done" for the current step. Adds a
-checkmark to the left of the step in the scrollable steps list
-(`components/RecipePlayer.jsx`), toggleable by click too, not just voice.
-State is session-only (resets on reload), same lifecycle as the existing
-loop on/off state — flagged as a default to revisit if Joe wants it to
-persist instead (e.g. localStorage per recipe).
+**1. ~~"Mark step done" + checkmark~~ — Done 2026-07-23.** Built on a
+`mark-step-done` branch off `main`: voice command "mark [step] done"
+(e.g. "mark chop garlic done"), reusing the existing fuzzy step-name
+matching already used by "loop the sear meat part" / "play the sear meat
+part again" in `lib/voiceCommands.js` rather than building new matching
+from scratch, plus a simpler "mark done" for the current step. Checkmark
+added to the left of each step in the scrollable steps list
+(`components/RecipePlayer.jsx`, `components/StepList.jsx`), toggleable
+by click too, not just voice. State is session-only (resets on reload),
+same lifecycle as the existing loop on/off state — left as a default to
+revisit if Joe wants it to persist instead (e.g. localStorage per
+recipe). Verified live with real speech on a Vercel preview deployment
+before merging (no simulation-only verification, per the "Voice latency"
+lesson below). Merged to `main` and pushed. See entry 11 under "Features
+shipped and confirmed working in production" above.
 
 **2. Bake-timer prompt — deferred as a "nice to have," design settled for
 whenever it's picked up.** Went through two trigger designs before
@@ -433,12 +448,13 @@ enforcement, migration path) — still not started. Open decisions:
 1. ~~Drop the `landing-test` branch and clean up the stray
    `landing-mockup-reference.html` file at the repo root.~~ **Done 2026-07-23**
    — see Session 6 cleanup above.
-2. **Build "mark step done" + checkmark** (feature backlog item 1 above)
-   whenever Joe's ready — prompt is already written.
+2. ~~Build "mark step done" + checkmark~~ (feature backlog item 1 above)
+   **Done 2026-07-23** — verified live with real speech on a preview
+   deployment, merged to `main` and pushed. See "Feature backlog" above.
 3. Optional cleanup: add `BLOB_READ_WRITE_TOKEN` to `.env.local` for local
    dev, and/or fix the missing `.catch()` in `app/page.js`.
 4. Decide whether to pursue Chrome's on-device speech recognition.
 5. Decide Neon vs. Supabase and Auth.js vs. Clerk for Phase 1, then work
    through the signup checklist and kick off implementation.
-6. Revisit the bake-timer prompt (feature backlog item 2 above) once
+6. Revisit the bake-timer prompt (feature backlog item 2 above) now that
    "mark step done" has shipped.
