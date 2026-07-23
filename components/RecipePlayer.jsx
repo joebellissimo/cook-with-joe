@@ -316,6 +316,26 @@ export default function RecipePlayer({ recipe, onRead }) {
 
   const handleVoiceCommand = useCallback(
     (transcript) => {
+      // While the welcome overlay is up, voice routes ONLY to its own two
+      // choices — dismiss, or review ingredients — never to step/playback
+      // commands. This isn't a keyword-level patch: passing empty
+      // steps/ingredients disables ALL fuzzy step-name and ingredient
+      // matching (not just the "ingredients" word colliding with a step
+      // titled "hand mix ingredients," which is what surfaced this), and
+      // returning immediately after means no other fixed action (next,
+      // play, loop-on, ...) can reach the switch below and act on the
+      // video hidden behind the overlay either.
+      if (showWelcome) {
+        const overlayAction = matchVoiceCommand(transcript, [], []);
+        if (overlayAction === "dismiss-welcome") {
+          dismissWelcome();
+        } else if (overlayAction === "show-ingredients") {
+          dismissWelcome();
+          setShowIngredients(true);
+        }
+        return;
+      }
+
       const action = matchVoiceCommand(transcript, steps, recipe.ingredients);
 
       if (action && typeof action === "object" && action.type === "goto-step") {
@@ -405,18 +425,10 @@ export default function RecipePlayer({ recipe, onRead }) {
           setPlaybackRate(1);
           break;
         case "show-ingredients":
-          // Doubles as the "review ingredients" choice on the welcome
-          // overlay — dismissing it here too, not just via its own
-          // button, so saying this while it's up doesn't leave it
-          // hanging around behind the ingredients panel.
-          if (showWelcome) dismissWelcome();
           setShowIngredients(true);
           break;
         case "hide-ingredients":
           setShowIngredients(false);
-          break;
-        case "dismiss-welcome":
-          if (showWelcome) dismissWelcome();
           break;
         case "mark-done": {
           // No step name given — mark whichever step is currently
@@ -614,21 +626,16 @@ export default function RecipePlayer({ recipe, onRead }) {
                 aria-label="Welcome"
                 className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-5 bg-black/80 px-6 text-center text-white"
               >
-                <div>
-                  <p className="text-lg font-semibold">
-                    Welcome to {recipe.title}! Shall we review the ingredients
-                    needed first?
-                  </p>
-                  <p className="mt-2 text-xs text-white/70">
-                    Tip: you can turn on the mic and just answer me.
-                  </p>
-                </div>
+                <p className="text-lg font-semibold">
+                  Welcome to {recipe.title}! Shall we review the ingredients
+                  needed first?
+                </p>
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button
                     onClick={dismissWelcome}
                     className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
                   >
-                    Let&apos;s get cooking
+                    No, let&apos;s just get cooking.
                   </button>
                   {recipe.ingredients?.length > 0 && (
                     <button
@@ -639,6 +646,23 @@ export default function RecipePlayer({ recipe, onRead }) {
                     </button>
                   )}
                 </div>
+                {/* Handwritten-note styling (font-handwritten, see
+                    app/layout.js/globals.css) deliberately sets this apart
+                    from standard UI copy above — a little aside, not
+                    another instruction. */}
+                <p className="font-handwritten text-2xl leading-snug text-white/90">
+                  Tip: you can turn on the mic and just answer me.
+                </p>
+                <button
+                  onClick={voice.toggle}
+                  disabled={!voice.supported}
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white transition disabled:opacity-40 ${
+                    voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
+                  } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
+                  title={voice.supported ? "Toggle voice control" : "Voice control isn't supported in this browser"}
+                >
+                  🎙️ {voice.listening ? "Listening…" : "Turn on mic"}
+                </button>
               </div>
             )}
             {/* Current-step title — driven by currentStep, which is null
@@ -776,7 +800,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                 disabled={!voice.supported}
                 className={`ml-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-white transition disabled:opacity-40 ${
                   voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
-                } ${micShouldPulse ? "animate-pulse" : ""}`}
+                } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
                 title={voice.supported ? "Toggle voice control" : "Voice control isn't supported in this browser"}
               >
                 🎙️ {voice.listening ? "Listening…" : "Voice control"}
@@ -879,7 +903,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                 aria-label="Toggle voice control"
                 className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
                   voice.listening ? "bg-red-600" : "bg-brand"
-                } ${micShouldPulse ? "animate-pulse" : ""}`}
+                } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
               >
                 🎙️
               </button>
