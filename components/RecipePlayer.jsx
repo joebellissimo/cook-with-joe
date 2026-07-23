@@ -7,7 +7,36 @@ import WatchReadToggle from "@/components/WatchReadToggle";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { matchVoiceCommand } from "@/lib/voiceCommands";
 import { playIngredientCheckedSound, playIngredientUncheckedSound } from "@/lib/sound";
-import { shortenIngredientText } from "@/lib/ingredientText";
+
+// The "need to get" list is a single freeform editable text value (see
+// needToGetText below), not a derived list — so checking/unchecking
+// "Need to get" for a specific ingredient has to surgically add or
+// remove just that ingredient's own line, by exact-text match, rather
+// than regenerating the whole value and wiping out any manual edits.
+// Entries are blocks separated by one or more blank lines (matching the
+// existing blank-line-between-entries convention); a manually-typed
+// multi-line note without a blank line inside it survives as one entry.
+function parseIngredientEntries(text) {
+  return text
+    .split(/\n\s*\n+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function addIngredientLine(text, line) {
+  const trimmedLine = line.trim();
+  const entries = parseIngredientEntries(text);
+  if (entries.includes(trimmedLine)) return text;
+  entries.push(trimmedLine);
+  return entries.join("\n\n");
+}
+
+function removeIngredientLine(text, line) {
+  const trimmedLine = line.trim();
+  return parseIngredientEntries(text)
+    .filter((entry) => entry !== trimmedLine)
+    .join("\n\n");
+}
 
 export default function RecipePlayer({ recipe, onRead }) {
   const steps = recipe.steps;
@@ -35,6 +64,15 @@ export default function RecipePlayer({ recipe, onRead }) {
   // candidate ingredient indices while it's showing, else null.
   const [ambiguousCandidates, setAmbiguousCandidates] = useState(null);
   const [ambiguousChecked, setAmbiguousChecked] = useState(() => new Set());
+  // The "need to get" list itself — a single freeform editable text
+  // value (not derived from ingredientStatus), so the user can type
+  // notes, fix typos, or add items that were never in the ingredient
+  // list at all. Checking/unchecking "Need to get" surgically adds or
+  // removes that ingredient's own line (see addIngredientLine/
+  // removeIngredientLine above) rather than regenerating this whole
+  // value, so manual edits survive. Session-only, same lifecycle as
+  // ingredientStatus below.
+  const [needToGetText, setNeedToGetText] = useState("");
   // Brief confirmation after "Copy list" — auto-dismisses on its own.
   const [copyConfirmation, setCopyConfirmation] = useState(false);
   const copyConfirmationTimeoutRef = useRef(null);
@@ -228,44 +266,47 @@ export default function RecipePlayer({ recipe, onRead }) {
   // this replaces).
   const setIngredientHave = useCallback(
     (index) => {
-      const willBeHave = ingredientStatus.get(index) !== "have";
+      const previousStatus = ingredientStatus.get(index);
+      const willBeHave = previousStatus !== "have";
       setIngredientStatus((prev) => {
         const next = new Map(prev);
         if (willBeHave) next.set(index, "have");
         else next.delete(index);
         return next;
       });
+      // Switching a "need to get" ingredient to "have" (or clearing it)
+      // means it's no longer on the list — remove its line so the text
+      // doesn't silently drift out of sync with the checkbox state.
+      if (previousStatus === "need") {
+        const ingredientText = recipe.ingredients[index];
+        setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
+      }
       if (willBeHave) playIngredientCheckedSound();
       else playIngredientUncheckedSound();
     },
-    [ingredientStatus]
+    [ingredientStatus, recipe.ingredients]
   );
 
   // Click on "Need to get" — also toggles (unlike the voice path below,
   // which explicitly sets — mirrors the mark-step-done/check-ingredient
   // pattern elsewhere in this file).
-  const setIngredientNeed = useCallback((index) => {
-    setIngredientStatus((prev) => {
-      const next = new Map(prev);
-      if (prev.get(index) === "need") next.delete(index);
-      else next.set(index, "need");
-      return next;
-    });
-  }, []);
-
-  // The running "need to get" list, in the recipe's own ingredient
-  // order, shortened to just the core ingredient name (see
-  // lib/ingredientText.js) — always derived from ingredientStatus rather
-  // than tracked as its own separately-appended array, so there's no way
-  // for it to drift out of sync or accumulate duplicates. Applying the
-  // shortener here (not at click/voice time) is what guarantees identical
-  // text regardless of how an item was added.
-  const needToGetList = useMemo(
-    () =>
-      (recipe.ingredients ?? [])
-        .filter((_, i) => ingredientStatus.get(i) === "need")
-        .map((text) => shortenIngredientText(text)),
-    [recipe.ingredients, ingredientStatus]
+  const setIngredientNeed = useCallback(
+    (index) => {
+      const willBeNeed = ingredientStatus.get(index) !== "need";
+      const ingredientText = recipe.ingredients[index];
+      setIngredientStatus((prev) => {
+        const next = new Map(prev);
+        if (willBeNeed) next.set(index, "need");
+        else next.delete(index);
+        return next;
+      });
+      setNeedToGetText((prevText) =>
+        willBeNeed
+          ? addIngredientLine(prevText, ingredientText)
+          : removeIngredientLine(prevText, ingredientText)
+      );
+    },
+    [ingredientStatus, recipe.ingredients]
   );
 
   const toggleAmbiguousChecked = useCallback((index) => {
@@ -285,9 +326,16 @@ export default function RecipePlayer({ recipe, onRead }) {
       ambiguousChecked.forEach((index) => next.set(index, "need"));
       return next;
     });
+    setNeedToGetText((prevText) => {
+      let text = prevText;
+      ambiguousChecked.forEach((index) => {
+        text = addIngredientLine(text, recipe.ingredients[index]);
+      });
+      return text;
+    });
     setAmbiguousCandidates(null);
     setAmbiguousChecked(new Set());
-  }, [ambiguousChecked]);
+  }, [ambiguousChecked, recipe.ingredients]);
 
   const cancelAmbiguous = useCallback(() => {
     setAmbiguousCandidates(null);
@@ -295,11 +343,10 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, []);
 
   const handleCopyList = useCallback(() => {
-    // Blank line between entries — matches the on-screen spacing (space-y-4
-    // below) so pasted text reads as clearly separated items too.
-    const text = needToGetList.join("\n\n");
+    // Copies exactly what's in the box — including any manual edits —
+    // not a regenerated version.
     navigator.clipboard
-      .writeText(text)
+      .writeText(needToGetText)
       .then(() => {
         setCopyConfirmation(true);
         if (copyConfirmationTimeoutRef.current) {
@@ -315,7 +362,7 @@ export default function RecipePlayer({ recipe, onRead }) {
         // the list stays visible and readable either way, so this just
         // silently skips the confirmation rather than showing an error.
       });
-  }, [needToGetList]);
+  }, [needToGetText]);
 
   const handleDoneWithIngredients = useCallback(() => {
     setShowIngredients(false);
@@ -465,20 +512,32 @@ export default function RecipePlayer({ recipe, onRead }) {
         // Repurposed for the "I have"/"Need to get" model: "check off
         // eggs"/"got the eggs" now sets the "have" status. Explicitly
         // set (not a toggle) — saying it twice shouldn't flip back to
-        // unset.
+        // unset. If it was on the "need to get" list, it isn't anymore —
+        // remove its line so the text doesn't drift out of sync.
+        const wasNeed = ingredientStatus.get(action.index) === "need";
         setIngredientStatus((prev) => new Map(prev).set(action.index, "have"));
+        if (wasNeed) {
+          const ingredientText = recipe.ingredients[action.index];
+          setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
+        }
         playIngredientCheckedSound();
         setShowIngredients(true);
         return;
       }
       if (action && typeof action === "object" && action.type === "uncheck-ingredient") {
         // "uncheck eggs"/"unmark eggs" clears the status entirely,
-        // whichever it was — the voice-level inverse of "check off."
+        // whichever it was — the voice-level inverse of "check off." Same
+        // need-to-get-list cleanup as check-ingredient above.
+        const wasNeed = ingredientStatus.get(action.index) === "need";
         setIngredientStatus((prev) => {
           const next = new Map(prev);
           next.delete(action.index);
           return next;
         });
+        if (wasNeed) {
+          const ingredientText = recipe.ingredients[action.index];
+          setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
+        }
         playIngredientUncheckedSound();
         setShowIngredients(true);
         return;
@@ -487,7 +546,9 @@ export default function RecipePlayer({ recipe, onRead }) {
         // "I need breadcrumbs" — exactly one ingredient matched.
         // Explicitly set (not toggle), same reasoning as check-ingredient
         // above.
+        const ingredientText = recipe.ingredients[action.index];
         setIngredientStatus((prev) => new Map(prev).set(action.index, "need"));
+        setNeedToGetText((prevText) => addIngredientLine(prevText, ingredientText));
         setShowIngredients(true);
         return;
       }
@@ -597,6 +658,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       showWelcome,
       dismissWelcome,
       ambiguousCandidates,
+      ingredientStatus,
       currentStep,
       activeStep,
       playStep,
@@ -672,9 +734,9 @@ export default function RecipePlayer({ recipe, onRead }) {
   // those apply while reviewing ingredients, and this explains where
   // "Need to get" picks actually end up instead.
   const ingredientsActiveNotice = (
-    <div className="border-t border-ink/15 pt-2 text-center text-xs text-muted">
-      Anything you need will be added to the list below. You can then copy it
-      when done.
+    <div className="rounded-lg bg-gray-700 px-3 py-2.5 text-center text-sm font-bold leading-snug text-white">
+      <p>Anything you need will be added to the list below.</p>
+      <p>You can then copy it when done.</p>
     </div>
   );
 
@@ -1094,25 +1156,29 @@ export default function RecipePlayer({ recipe, onRead }) {
                 {/* White note-card sitting on the page's cream background
                     — only the actual list text lives on white, not this
                     whole view (buttons/confirmation below stay on the
-                    page background). */}
+                    page background). Genuinely editable: a plain
+                    textarea bound directly to needToGetText, so typing,
+                    fixing typos, adding your own items, or removing
+                    lines all just work like any normal text box.
+                    Checking/unchecking "Need to get" on a row surgically
+                    edits this same value (see addIngredientLine/
+                    removeIngredientLine) rather than overwriting it, so
+                    manual edits here survive a voice or click toggle. */}
                 <div className="rounded-xl bg-white p-4 shadow-sm">
-                  {needToGetList.length === 0 ? (
-                    <p className="text-sm text-muted">
-                      Nothing on your list yet — mark an ingredient
-                      &ldquo;Need to get&rdquo; and it&apos;ll show up here.
-                    </p>
-                  ) : (
-                    <ul className="space-y-4 text-sm text-ink">
-                      {needToGetList.map((text, i) => (
-                        <li key={i}>{text}</li>
-                      ))}
-                    </ul>
-                  )}
+                  <textarea
+                    value={needToGetText}
+                    onChange={(e) => setNeedToGetText(e.target.value)}
+                    placeholder={
+                      'Nothing on your list yet — mark an ingredient "Need to get," or just type your own here.'
+                    }
+                    rows={8}
+                    className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-muted"
+                  />
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleCopyList}
-                    disabled={needToGetList.length === 0}
+                    disabled={!needToGetText.trim()}
                     className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
                   >
                     📋 Copy list
