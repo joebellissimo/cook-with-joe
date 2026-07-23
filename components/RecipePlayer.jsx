@@ -24,6 +24,10 @@ export default function RecipePlayer({ recipe, onRead }) {
   // doesn't pause playback or otherwise leave hands-free mode.
   const [showIngredients, setShowIngredients] = useState(false);
   const [checkedIngredients, setCheckedIngredients] = useState(() => new Set());
+  // Steps checked off via "mark done"/"mark [step] done" or the checkmark
+  // in the steps list. Session-only, same lifecycle as loopEnabled above —
+  // resets on reload, no localStorage.
+  const [doneSteps, setDoneSteps] = useState(() => new Set());
   // false = "just play the whole video through" (the default on first load —
   // no stopping at step boundaries). true = "focused on one step" — entered
   // whenever you jump to a specific step by name, by list click, or via
@@ -193,6 +197,18 @@ export default function RecipePlayer({ recipe, onRead }) {
     [checkedIngredients]
   );
 
+  // Click on the checkmark in the steps list — toggles, unlike the voice
+  // commands below which explicitly set (mirrors check/uncheck-ingredient:
+  // voice sets a specific state, direct UI interaction toggles).
+  const toggleStepDone = useCallback((stepId) => {
+    setDoneSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(stepId)) next.delete(stepId);
+      else next.add(stepId);
+      return next;
+    });
+  }, []);
+
   // Downward-swipe-to-dismiss on the ingredients panel. Tracked in refs
   // (not state) since touchmove fires continuously and shouldn't trigger a
   // re-render — only touchend acts on the accumulated drag distance.
@@ -310,6 +326,12 @@ export default function RecipePlayer({ recipe, onRead }) {
         setShowIngredients(true);
         return;
       }
+      if (action && typeof action === "object" && action.type === "mark-step-done") {
+        // Explicitly set (not a toggle) — saying "mark chop garlic done"
+        // when it's already done shouldn't accidentally un-mark it.
+        setDoneSteps((prev) => new Set(prev).add(action.step.id));
+        return;
+      }
 
       switch (action) {
         case "next":
@@ -360,6 +382,16 @@ export default function RecipePlayer({ recipe, onRead }) {
         case "hide-ingredients":
           setShowIngredients(false);
           break;
+        case "mark-done": {
+          // No step name given — mark whichever step is currently
+          // playing/active. Same fallback the steps-list highlight uses:
+          // currentStep (the step under the playhead right now) when
+          // available, else activeStep (the last step explicitly
+          // navigated to), for a sensible target even during a gap.
+          const target = currentStep ?? activeStep;
+          if (target) setDoneSteps((prev) => new Set(prev).add(target.id));
+          break;
+        }
         case "scroll-down": {
           const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
           el?.scrollBy({ top: el.clientHeight, behavior: "smooth" });
@@ -388,6 +420,8 @@ export default function RecipePlayer({ recipe, onRead }) {
       steps,
       recipe.ingredients,
       showIngredients,
+      currentStep,
+      activeStep,
       playStep,
       handleNext,
       handlePrevious,
@@ -685,12 +719,13 @@ export default function RecipePlayer({ recipe, onRead }) {
               &ldquo;pause&rdquo;/&ldquo;stop&rdquo;, &ldquo;keep
               playing&rdquo;, &ldquo;start from the beginning&rdquo;,
               &ldquo;half speed&rdquo;/&ldquo;slow motion&rdquo;,
-              &ldquo;normal speed&rdquo; — or reference a step by name, like
+              &ldquo;normal speed&rdquo;, &ldquo;mark done&rdquo; — or
+              reference a step by name, like
               &ldquo;play {steps[0]?.label?.toLowerCase()}&rdquo; or
               &ldquo;loop {steps[0]?.label?.toLowerCase()}&rdquo; (jumps
               there and keeps repeating it until you say &ldquo;stop&rdquo;
-              or ask for another step), or add &ldquo;at half speed&rdquo;
-              to either.
+              or ask for another step), &ldquo;mark {steps[0]?.label?.toLowerCase()}{" "}
+              done&rdquo;, or add &ldquo;at half speed&rdquo; to either.
             </p>
           </div>
         </div>
@@ -721,7 +756,13 @@ export default function RecipePlayer({ recipe, onRead }) {
             {/* currentStep (not activeStepId) drives the highlight/auto-
                 scroll — null in a gap, which StepList already handles by
                 just not matching any item, no highlight, no scroll. */}
-            <StepList steps={steps} activeStepId={currentStep?.id ?? null} onSelect={playStep} />
+            <StepList
+              steps={steps}
+              activeStepId={currentStep?.id ?? null}
+              onSelect={playStep}
+              doneSteps={doneSteps}
+              onToggleDone={toggleStepDone}
+            />
           </div>
 
           {/* Mobile-only control bar, sitting right below the steps list —
