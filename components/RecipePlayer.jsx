@@ -23,7 +23,20 @@ export default function RecipePlayer({ recipe, onRead }) {
   // Quick-glance ingredients checklist, slid up over the video on mobile —
   // doesn't pause playback or otherwise leave hands-free mode.
   const [showIngredients, setShowIngredients] = useState(false);
-  const [checkedIngredients, setCheckedIngredients] = useState(() => new Set());
+  // Per-ingredient status, keyed by its index in recipe.ingredients:
+  // "have" (I have it — reviewed) or "need" (on the running "need to
+  // get" list) or absent (unset). Replaces the earlier plain checkmark —
+  // same session-only lifecycle as doneSteps below (resets on reload).
+  const [ingredientStatus, setIngredientStatus] = useState(() => new Map());
+  // "I need <word>" voice matches that tie between more than one real
+  // ingredient (e.g. "garlic" against both "garlic" and "garlic powder")
+  // surface a pick-one-or-more popup instead of guessing. Array of
+  // candidate ingredient indices while it's showing, else null.
+  const [ambiguousCandidates, setAmbiguousCandidates] = useState(null);
+  const [ambiguousChecked, setAmbiguousChecked] = useState(() => new Set());
+  // Brief confirmation after "Copy list" — auto-dismisses on its own.
+  const [copyConfirmation, setCopyConfirmation] = useState(false);
+  const copyConfirmationTimeoutRef = useRef(null);
   // Steps checked off via "mark done"/"mark [step] done" or the checkmark
   // in the steps list. Session-only, same lifecycle as loopEnabled above —
   // resets on reload, no localStorage.
@@ -207,23 +220,98 @@ export default function RecipePlayer({ recipe, onRead }) {
     setContinuousMode(false);
   }, []);
 
-  const toggleIngredientChecked = useCallback(
+  // Click on "I have" — toggles. Decided from current state rather than
+  // inside the setState updater, so the sound (a side effect) can't fire
+  // twice under React Strict Mode's dev-only double-invocation of
+  // updater functions (same reasoning as the old toggleIngredientChecked
+  // this replaces).
+  const setIngredientHave = useCallback(
     (index) => {
-      // Decided from current state rather than inside the setState updater,
-      // so the sound (a side effect) can't fire twice under React Strict
-      // Mode's dev-only double-invocation of updater functions.
-      const willBeChecked = !checkedIngredients.has(index);
-      setCheckedIngredients((prev) => {
-        const next = new Set(prev);
-        if (willBeChecked) next.add(index);
+      const willBeHave = ingredientStatus.get(index) !== "have";
+      setIngredientStatus((prev) => {
+        const next = new Map(prev);
+        if (willBeHave) next.set(index, "have");
         else next.delete(index);
         return next;
       });
-      if (willBeChecked) playIngredientCheckedSound();
+      if (willBeHave) playIngredientCheckedSound();
       else playIngredientUncheckedSound();
     },
-    [checkedIngredients]
+    [ingredientStatus]
   );
+
+  // Click on "Need to get" — also toggles (unlike the voice path below,
+  // which explicitly sets — mirrors the mark-step-done/check-ingredient
+  // pattern elsewhere in this file).
+  const setIngredientNeed = useCallback((index) => {
+    setIngredientStatus((prev) => {
+      const next = new Map(prev);
+      if (prev.get(index) === "need") next.delete(index);
+      else next.set(index, "need");
+      return next;
+    });
+  }, []);
+
+  // The running "need to get" list, in the recipe's own ingredient
+  // order, using each ingredient's exact publisher-written text — always
+  // derived from ingredientStatus rather than tracked as its own
+  // separately-appended array, so there's no way for it to drift out of
+  // sync or accumulate duplicates.
+  const needToGetList = useMemo(
+    () => (recipe.ingredients ?? []).filter((_, i) => ingredientStatus.get(i) === "need"),
+    [recipe.ingredients, ingredientStatus]
+  );
+
+  const toggleAmbiguousChecked = useCallback((index) => {
+    setAmbiguousChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }, []);
+
+  // Commits every checked candidate to the "need to get" list in one go
+  // — no partial commit without this explicit confirmation.
+  const confirmAmbiguousAddToList = useCallback(() => {
+    setIngredientStatus((prev) => {
+      const next = new Map(prev);
+      ambiguousChecked.forEach((index) => next.set(index, "need"));
+      return next;
+    });
+    setAmbiguousCandidates(null);
+    setAmbiguousChecked(new Set());
+  }, [ambiguousChecked]);
+
+  const cancelAmbiguous = useCallback(() => {
+    setAmbiguousCandidates(null);
+    setAmbiguousChecked(new Set());
+  }, []);
+
+  const handleCopyList = useCallback(() => {
+    const text = needToGetList.join("\n");
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopyConfirmation(true);
+        if (copyConfirmationTimeoutRef.current) {
+          clearTimeout(copyConfirmationTimeoutRef.current);
+        }
+        copyConfirmationTimeoutRef.current = setTimeout(
+          () => setCopyConfirmation(false),
+          4000
+        );
+      })
+      .catch(() => {
+        // Clipboard access can fail (permissions, insecure context) —
+        // the list stays visible and readable either way, so this just
+        // silently skips the confirmation rather than showing an error.
+      });
+  }, [needToGetList]);
+
+  const handleDoneWithIngredients = useCallback(() => {
+    setShowIngredients(false);
+  }, []);
 
   // Click on the checkmark in the steps list — toggles, unlike the voice
   // commands below which explicitly set (mirrors check/uncheck-ingredient:
@@ -336,6 +424,15 @@ export default function RecipePlayer({ recipe, onRead }) {
         return;
       }
 
+      // While the ambiguous-ingredient-match popup is up, voice has no
+      // defined way to interact with its checkboxes (click-only, per
+      // spec) — block everything else too, same modal-scoping lesson as
+      // the welcome overlay above, so a stray "next step" etc. can't act
+      // on the video hidden behind it.
+      if (ambiguousCandidates) {
+        return;
+      }
+
       const action = matchVoiceCommand(transcript, steps, recipe.ingredients);
 
       if (action && typeof action === "object" && action.type === "goto-step") {
@@ -357,20 +454,41 @@ export default function RecipePlayer({ recipe, onRead }) {
         return;
       }
       if (action && typeof action === "object" && action.type === "check-ingredient") {
-        // Explicitly set checked (not a toggle) — saying "check off eggs"
-        // when eggs is already checked shouldn't accidentally uncheck it.
-        setCheckedIngredients((prev) => new Set(prev).add(action.index));
+        // Repurposed for the "I have"/"Need to get" model: "check off
+        // eggs"/"got the eggs" now sets the "have" status. Explicitly
+        // set (not a toggle) — saying it twice shouldn't flip back to
+        // unset.
+        setIngredientStatus((prev) => new Map(prev).set(action.index, "have"));
         playIngredientCheckedSound();
         setShowIngredients(true);
         return;
       }
       if (action && typeof action === "object" && action.type === "uncheck-ingredient") {
-        setCheckedIngredients((prev) => {
-          const next = new Set(prev);
+        // "uncheck eggs"/"unmark eggs" clears the status entirely,
+        // whichever it was — the voice-level inverse of "check off."
+        setIngredientStatus((prev) => {
+          const next = new Map(prev);
           next.delete(action.index);
           return next;
         });
         playIngredientUncheckedSound();
+        setShowIngredients(true);
+        return;
+      }
+      if (action && typeof action === "object" && action.type === "need-ingredient") {
+        // "I need breadcrumbs" — exactly one ingredient matched.
+        // Explicitly set (not toggle), same reasoning as check-ingredient
+        // above.
+        setIngredientStatus((prev) => new Map(prev).set(action.index, "need"));
+        setShowIngredients(true);
+        return;
+      }
+      if (action && typeof action === "object" && action.type === "need-ingredient-ambiguous") {
+        // More than one ingredient tied for the best fuzzy match (e.g.
+        // "garlic" against both "garlic" and "garlic powder") — ask
+        // rather than guess.
+        setAmbiguousCandidates(action.indices);
+        setAmbiguousChecked(new Set());
         setShowIngredients(true);
         return;
       }
@@ -470,6 +588,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       showIngredients,
       showWelcome,
       dismissWelcome,
+      ambiguousCandidates,
       currentStep,
       activeStep,
       playStep,
@@ -665,6 +784,54 @@ export default function RecipePlayer({ recipe, onRead }) {
                 </button>
               </div>
             )}
+            {/* Ambiguous "I need <word>" voice match — more than one real
+                ingredient tied for the best fuzzy match (e.g. "garlic"
+                against both "garlic" and "garlic powder"), so this asks
+                rather than guessing. z-40, above the welcome overlay's
+                z-30 — the two can't actually coexist in practice, but
+                this stays on top if that ever changes. Click-only (see
+                the voice-routing gate above); multi-select since someone
+                might genuinely need more than one candidate. */}
+            {ambiguousCandidates && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Which ingredient did you mean?"
+                className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/80 px-6 text-center text-white"
+              >
+                <p className="text-base font-semibold">Which one did you mean?</p>
+                <ul className="w-full max-w-xs space-y-2 text-left">
+                  {ambiguousCandidates.map((index) => (
+                    <li key={index}>
+                      <label className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={ambiguousChecked.has(index)}
+                          onChange={() => toggleAmbiguousChecked(index)}
+                          className="accent-brand"
+                        />
+                        <span className="text-sm text-white">{recipe.ingredients[index]}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex gap-3">
+                  <button
+                    onClick={cancelAmbiguous}
+                    className="rounded-full border border-white/30 px-4 py-2 text-sm font-medium text-white hover:bg-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmAmbiguousAddToList}
+                    disabled={ambiguousChecked.size === 0}
+                    className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40"
+                  >
+                    Add to list
+                  </button>
+                </div>
+              </div>
+            )}
             {/* Current-step title — driven by currentStep, which is null
                 whenever the playhead isn't actually within any step's
                 range (before the first step, after the last, or a gap
@@ -730,21 +897,42 @@ export default function RecipePlayer({ recipe, onRead }) {
                   </button>
                 </div>
                 <ul className="space-y-2 text-sm">
-                  {recipe.ingredients.map((ingredient, i) => (
-                    <li key={i}>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={checkedIngredients.has(i)}
-                          onChange={() => toggleIngredientChecked(i)}
-                          className="accent-brand"
-                        />
-                        <span className={checkedIngredients.has(i) ? "text-muted line-through" : "text-ink"}>
+                  {recipe.ingredients.map((ingredient, i) => {
+                    const status = ingredientStatus.get(i);
+                    return (
+                      <li key={i} className="flex flex-wrap items-center justify-between gap-2">
+                        <span className={`min-w-0 ${status === "have" ? "text-muted line-through" : "text-ink"}`}>
                           {ingredient}
                         </span>
-                      </label>
-                    </li>
-                  ))}
+                        <span className="flex shrink-0 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setIngredientHave(i)}
+                            aria-pressed={status === "have"}
+                            className={`rounded-full border px-2 py-0.5 text-xs font-medium transition ${
+                              status === "have"
+                                ? "border-brand bg-brand text-white"
+                                : "border-ink/20 bg-white text-muted hover:border-brand/40"
+                            }`}
+                          >
+                            I have
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIngredientNeed(i)}
+                            aria-pressed={status === "need"}
+                            className={`rounded-full border px-2 py-0.5 text-xs font-medium transition ${
+                              status === "need"
+                                ? "border-brand-dark bg-brand-dark text-white"
+                                : "border-ink/20 bg-white text-muted hover:border-brand/40"
+                            }`}
+                          >
+                            Need to get
+                          </button>
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -856,19 +1044,66 @@ export default function RecipePlayer({ recipe, onRead }) {
             ref={stepsListRef}
             className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:flex-none md:overflow-visible md:px-0 md:pt-0"
           >
-            <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
-              Steps
-            </h2>
-            {/* currentStep (not activeStepId) drives the highlight/auto-
-                scroll — null in a gap, which StepList already handles by
-                just not matching any item, no highlight, no scroll. */}
-            <StepList
-              steps={steps}
-              activeStepId={currentStep?.id ?? null}
-              onSelect={playStep}
-              doneSteps={doneSteps}
-              onToggleDone={toggleStepDone}
-            />
+            {/* This area doubles as the "need to get" view while the
+                ingredients panel is open — same ref, same voice-driven
+                scroll target (see scroll-up/down/top/bottom above),
+                just different content depending on showIngredients. */}
+            {showIngredients ? (
+              <>
+                <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
+                  Need to get
+                </h2>
+                {needToGetList.length === 0 ? (
+                  <p className="text-sm text-muted">
+                    Nothing on your list yet — mark an ingredient
+                    &ldquo;Need to get&rdquo; and it&apos;ll show up here.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5 text-sm text-ink">
+                    {needToGetList.map((text, i) => (
+                      <li key={i}>{text}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleCopyList}
+                    disabled={needToGetList.length === 0}
+                    className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
+                  >
+                    📋 Copy list
+                  </button>
+                  <button
+                    onClick={handleDoneWithIngredients}
+                    className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+                  >
+                    Done
+                  </button>
+                </div>
+                {copyConfirmation && (
+                  <p role="status" className="mt-2 text-xs text-brand-dark">
+                    Your list is copied. You can now paste it into a text,
+                    notes, or elsewhere.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
+                  Steps
+                </h2>
+                {/* currentStep (not activeStepId) drives the highlight/auto-
+                    scroll — null in a gap, which StepList already handles by
+                    just not matching any item, no highlight, no scroll. */}
+                <StepList
+                  steps={steps}
+                  activeStepId={currentStep?.id ?? null}
+                  onSelect={playStep}
+                  doneSteps={doneSteps}
+                  onToggleDone={toggleStepDone}
+                />
+              </>
+            )}
           </div>
 
           {/* Mobile-only control bar, sitting right below the steps list —
