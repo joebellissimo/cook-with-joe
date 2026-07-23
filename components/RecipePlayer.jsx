@@ -289,7 +289,9 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, []);
 
   const handleCopyList = useCallback(() => {
-    const text = needToGetList.join("\n");
+    // Blank line between entries — matches the on-screen spacing (space-y-4
+    // below) so pasted text reads as clearly separated items too.
+    const text = needToGetList.join("\n\n");
     navigator.clipboard
       .writeText(text)
       .then(() => {
@@ -1059,7 +1061,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                     &ldquo;Need to get&rdquo; and it&apos;ll show up here.
                   </p>
                 ) : (
-                  <ul className="space-y-1.5 text-sm text-ink">
+                  <ul className="space-y-4 text-sm text-ink">
                     {needToGetList.map((text, i) => (
                       <li key={i}>{text}</li>
                     ))}
