@@ -28,6 +28,14 @@ export default function RecipePlayer({ recipe, onRead }) {
   // in the steps list. Session-only, same lifecycle as loopEnabled above —
   // resets on reload, no localStorage.
   const [doneSteps, setDoneSteps] = useState(() => new Set());
+  // First-visit welcome overlay — shown once per recipe per browser
+  // session (sessionStorage, not localStorage), so it naturally resets
+  // when the tab/browser closes but doesn't reappear on a same-session
+  // reload or navigate-away-and-back. Starts false on both server and
+  // client render to avoid a hydration mismatch; the effect below flips
+  // it true right after mount, client-side only, where sessionStorage
+  // actually exists.
+  const [showWelcome, setShowWelcome] = useState(false);
   // false = "just play the whole video through" (the default on first load —
   // no stopping at step boundaries). true = "focused on one step" — entered
   // whenever you jump to a specific step by name, by list click, or via
@@ -62,6 +70,26 @@ export default function RecipePlayer({ recipe, onRead }) {
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = playbackRate;
   }, [playbackRate]);
+
+  const welcomeSeenKey = `recipe-welcome-seen:${recipe.slug}`;
+
+  useEffect(() => {
+    if (!window.sessionStorage.getItem(welcomeSeenKey)) {
+      setShowWelcome(true);
+    }
+  }, [welcomeSeenKey]);
+
+  // Either button (or voice equivalent) counts as "seen" — suppresses the
+  // overlay for this recipe for the rest of the browser session.
+  const dismissWelcome = useCallback(() => {
+    setShowWelcome(false);
+    window.sessionStorage.setItem(welcomeSeenKey, "1");
+  }, [welcomeSeenKey]);
+
+  const handleWelcomeReviewIngredients = useCallback(() => {
+    dismissWelcome();
+    setShowIngredients(true);
+  }, [dismissWelcome]);
 
   const activeIndex = useMemo(
     () => steps.findIndex((s) => s.id === activeStepId),
@@ -288,6 +316,26 @@ export default function RecipePlayer({ recipe, onRead }) {
 
   const handleVoiceCommand = useCallback(
     (transcript) => {
+      // While the welcome overlay is up, voice routes ONLY to its own two
+      // choices — dismiss, or review ingredients — never to step/playback
+      // commands. This isn't a keyword-level patch: passing empty
+      // steps/ingredients disables ALL fuzzy step-name and ingredient
+      // matching (not just the "ingredients" word colliding with a step
+      // titled "hand mix ingredients," which is what surfaced this), and
+      // returning immediately after means no other fixed action (next,
+      // play, loop-on, ...) can reach the switch below and act on the
+      // video hidden behind the overlay either.
+      if (showWelcome) {
+        const overlayAction = matchVoiceCommand(transcript, [], []);
+        if (overlayAction === "dismiss-welcome") {
+          dismissWelcome();
+        } else if (overlayAction === "show-ingredients") {
+          dismissWelcome();
+          setShowIngredients(true);
+        }
+        return;
+      }
+
       const action = matchVoiceCommand(transcript, steps, recipe.ingredients);
 
       if (action && typeof action === "object" && action.type === "goto-step") {
@@ -420,6 +468,8 @@ export default function RecipePlayer({ recipe, onRead }) {
       steps,
       recipe.ingredients,
       showIngredients,
+      showWelcome,
+      dismissWelcome,
       currentStep,
       activeStep,
       playStep,
@@ -435,6 +485,11 @@ export default function RecipePlayer({ recipe, onRead }) {
   );
 
   const voice = useVoiceCommands(handleVoiceCommand);
+  // Draws attention to the mic toggle while the welcome overlay is up.
+  // Stops the moment the mic is turned on (voice.listening) or the
+  // overlay is dismissed either way (showWelcome), by construction —
+  // both are direct inputs to this, not something separately reset.
+  const micShouldPulse = showWelcome && !voice.listening;
 
   const loopCheckbox = (
     <input
@@ -559,6 +614,57 @@ export default function RecipePlayer({ recipe, onRead }) {
               onPause={() => setIsPlaying(false)}
               playsInline
             />
+            {/* First-visit welcome overlay — sits in front of everything
+                else in the video area (z-30, above the z-20 ingredients
+                panel) until dismissed via either button or its voice
+                equivalents. Doesn't touch playback at all: dismissing
+                just reveals the normal, not-yet-started player. */}
+            {showWelcome && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Welcome"
+                className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-5 bg-black/80 px-6 text-center text-white"
+              >
+                <p className="text-lg font-semibold">
+                  Welcome to {recipe.title}! Shall we review the ingredients
+                  needed first?
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    onClick={dismissWelcome}
+                    className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
+                  >
+                    No, let&apos;s just get cooking.
+                  </button>
+                  {recipe.ingredients?.length > 0 && (
+                    <button
+                      onClick={handleWelcomeReviewIngredients}
+                      className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-brand/10"
+                    >
+                      Review ingredients
+                    </button>
+                  )}
+                </div>
+                {/* Handwritten-note styling (font-handwritten, see
+                    app/layout.js/globals.css) deliberately sets this apart
+                    from standard UI copy above — a little aside, not
+                    another instruction. */}
+                <p className="font-handwritten text-2xl leading-snug text-white/90">
+                  Tip: you can turn on the mic and just answer me.
+                </p>
+                <button
+                  onClick={voice.toggle}
+                  disabled={!voice.supported}
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white transition disabled:opacity-40 ${
+                    voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
+                  } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
+                  title={voice.supported ? "Toggle voice control" : "Voice control isn't supported in this browser"}
+                >
+                  🎙️ {voice.listening ? "Listening…" : "Turn on mic"}
+                </button>
+              </div>
+            )}
             {/* Current-step title — driven by currentStep, which is null
                 whenever the playhead isn't actually within any step's
                 range (before the first step, after the last, or a gap
@@ -694,7 +800,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                 disabled={!voice.supported}
                 className={`ml-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-white transition disabled:opacity-40 ${
                   voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
-                }`}
+                } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
                 title={voice.supported ? "Toggle voice control" : "Voice control isn't supported in this browser"}
               >
                 🎙️ {voice.listening ? "Listening…" : "Voice control"}
@@ -797,7 +903,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                 aria-label="Toggle voice control"
                 className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
                   voice.listening ? "bg-red-600" : "bg-brand"
-                }`}
+                } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
               >
                 🎙️
               </button>

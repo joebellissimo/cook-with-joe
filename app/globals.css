@@ -8,6 +8,8 @@
   --color-brand-dark: #4a535c;
   --font-sans: var(--font-jost), system-ui, -apple-system, "Segoe UI", Roboto,
     Helvetica, Arial, sans-serif;
+  /* Handwritten-note accent — recipe welcome overlay's mic tip. */
+  --font-handwritten: var(--font-caveat), cursive;
 }
 
 body {
@@ -38,4 +40,21 @@ body {
   width: 2.5rem;
   height: 1px;
   background: var(--color-brand);
+}
+
+/* Slow orange blink for the mic toggle on the recipe welcome overlay —
+   draws the eye to voice as an option without being alarming. A color
+   blink (not Tailwind's opacity-based animate-pulse) so it reads as "try
+   this" rather than "loading." */
+@keyframes mic-orange-pulse {
+  0%,
+  100% {
+    background-color: #ea580c;
+  }
+  50% {
+    background-color: #fb923c;
+  }
+}
+.mic-orange-pulse {
+  animation: mic-orange-pulse 2.2s ease-in-out infinite;
 }
