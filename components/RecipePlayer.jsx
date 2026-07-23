@@ -7,6 +7,7 @@ import WatchReadToggle from "@/components/WatchReadToggle";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { matchVoiceCommand } from "@/lib/voiceCommands";
 import { playIngredientCheckedSound, playIngredientUncheckedSound } from "@/lib/sound";
+import { shortenIngredientText } from "@/lib/ingredientText";
 
 export default function RecipePlayer({ recipe, onRead }) {
   const steps = recipe.steps;
@@ -253,12 +254,17 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, []);
 
   // The running "need to get" list, in the recipe's own ingredient
-  // order, using each ingredient's exact publisher-written text — always
-  // derived from ingredientStatus rather than tracked as its own
-  // separately-appended array, so there's no way for it to drift out of
-  // sync or accumulate duplicates.
+  // order, shortened to just the core ingredient name (see
+  // lib/ingredientText.js) — always derived from ingredientStatus rather
+  // than tracked as its own separately-appended array, so there's no way
+  // for it to drift out of sync or accumulate duplicates. Applying the
+  // shortener here (not at click/voice time) is what guarantees identical
+  // text regardless of how an item was added.
   const needToGetList = useMemo(
-    () => (recipe.ingredients ?? []).filter((_, i) => ingredientStatus.get(i) === "need"),
+    () =>
+      (recipe.ingredients ?? [])
+        .filter((_, i) => ingredientStatus.get(i) === "need")
+        .map((text) => shortenIngredientText(text)),
     [recipe.ingredients, ingredientStatus]
   );
 
@@ -661,6 +667,17 @@ export default function RecipePlayer({ recipe, onRead }) {
     </div>
   );
 
+  // Replaces Repeat/Loop/Ingredients (stepControlsRow, and their desktop
+  // equivalents below) while the ingredients panel is open — none of
+  // those apply while reviewing ingredients, and this explains where
+  // "Need to get" picks actually end up instead.
+  const ingredientsActiveNotice = (
+    <div className="border-t border-ink/15 pt-2 text-center text-xs text-muted">
+      Anything you need will be added to the list below. You can then copy it
+      when done.
+    </div>
+  );
+
   return (
     // Below md: a full-viewport (h-dvh) stack that takes over the screen —
     // video / scrollable steps / control bar — so only the steps list
@@ -898,39 +915,52 @@ export default function RecipePlayer({ recipe, onRead }) {
                     ✕
                   </button>
                 </div>
+                {/* Same grid-template-columns literal on the header and
+                    every row below is what keeps the two checkbox columns
+                    aligned down the whole list — a fixed-width column
+                    (not "auto") guarantees the header and every row agree
+                    on width regardless of that row's own content, and
+                    "items-start" plus the text column being its own grid
+                    cell is what keeps a wrapped second line under the
+                    first line's text rather than sliding under a
+                    checkbox. */}
+                <div className="grid grid-cols-[1fr_4.5rem_4.5rem] items-center gap-x-2 pb-1">
+                  <span />
+                  <span className="text-center text-[10px] font-semibold uppercase leading-tight tracking-wide text-muted">
+                    I have
+                  </span>
+                  <span className="text-center text-[10px] font-semibold uppercase leading-tight tracking-wide text-muted">
+                    Need to get
+                  </span>
+                </div>
                 <ul className="space-y-2 text-sm">
                   {recipe.ingredients.map((ingredient, i) => {
                     const status = ingredientStatus.get(i);
                     return (
-                      <li key={i} className="flex flex-wrap items-center justify-between gap-2">
-                        <span className={`min-w-0 ${status === "have" ? "text-muted line-through" : "text-ink"}`}>
+                      <li
+                        key={i}
+                        className="grid grid-cols-[1fr_4.5rem_4.5rem] items-start gap-x-2 gap-y-1"
+                      >
+                        <span className={status === "have" ? "text-muted line-through" : "text-ink"}>
                           {ingredient}
                         </span>
-                        <span className="flex shrink-0 gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setIngredientHave(i)}
-                            aria-pressed={status === "have"}
-                            className={`rounded-full border px-2 py-0.5 text-xs font-medium transition ${
-                              status === "have"
-                                ? "border-brand bg-brand text-white"
-                                : "border-ink/20 bg-white text-muted hover:border-brand/40"
-                            }`}
-                          >
-                            I have
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIngredientNeed(i)}
-                            aria-pressed={status === "need"}
-                            className={`rounded-full border px-2 py-0.5 text-xs font-medium transition ${
-                              status === "need"
-                                ? "border-brand-dark bg-brand-dark text-white"
-                                : "border-ink/20 bg-white text-muted hover:border-brand/40"
-                            }`}
-                          >
-                            Need to get
-                          </button>
+                        <span className="flex justify-center pt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={status === "have"}
+                            onChange={() => setIngredientHave(i)}
+                            aria-label={`I have ${ingredient}`}
+                            className="accent-brand"
+                          />
+                        </span>
+                        <span className="flex justify-center pt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={status === "need"}
+                            onChange={() => setIngredientNeed(i)}
+                            aria-label={`Need to get ${ingredient}`}
+                            className="accent-brand"
+                          />
                         </span>
                       </li>
                     );
@@ -957,12 +987,14 @@ export default function RecipePlayer({ recipe, onRead }) {
               >
                 {isPlaying ? "Pause" : "Play"}
               </button>
-              <button
-                onClick={handleRepeat}
-                className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
-              >
-                ↻ Repeat step
-              </button>
+              {!showIngredients && (
+                <button
+                  onClick={handleRepeat}
+                  className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
+                >
+                  ↻ Repeat step
+                </button>
+              )}
               <button
                 onClick={handleNext}
                 disabled={activeIndex >= steps.length - 1}
@@ -971,12 +1003,14 @@ export default function RecipePlayer({ recipe, onRead }) {
                 Next →
               </button>
 
-              <label className="ml-1 flex items-center gap-2 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted">
-                {loopCheckbox}
-                Loop this step
-              </label>
+              {!showIngredients && (
+                <label className="ml-1 flex items-center gap-2 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted">
+                  {loopCheckbox}
+                  Loop this step
+                </label>
+              )}
 
-              {recipe.ingredients?.length > 0 && (
+              {!showIngredients && recipe.ingredients?.length > 0 && (
                 <button
                   onClick={() => setShowIngredients((v) => !v)}
                   className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
@@ -996,6 +1030,8 @@ export default function RecipePlayer({ recipe, onRead }) {
                 🎙️ {voice.listening ? "Listening…" : "Voice control"}
               </button>
             </div>
+
+            {showIngredients && <div className="mt-3">{ingredientsActiveNotice}</div>}
 
             {!voice.supported && (
               <p className="mt-2 text-xs text-muted">
@@ -1033,7 +1069,7 @@ export default function RecipePlayer({ recipe, onRead }) {
             repeat/loop controls in the inline row above (no separate
             ingredients toggle there), so this is md:hidden. */}
         <div className="shrink-0 border-y border-ink/10 bg-white px-3 py-2 md:hidden">
-          {stepControlsRow}
+          {showIngredients ? ingredientsActiveNotice : stepControlsRow}
         </div>
 
         {/* Bottom third — steps list + control bar grouped together so they
@@ -1055,18 +1091,24 @@ export default function RecipePlayer({ recipe, onRead }) {
                 <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
                   Need to get
                 </h2>
-                {needToGetList.length === 0 ? (
-                  <p className="text-sm text-muted">
-                    Nothing on your list yet — mark an ingredient
-                    &ldquo;Need to get&rdquo; and it&apos;ll show up here.
-                  </p>
-                ) : (
-                  <ul className="space-y-4 text-sm text-ink">
-                    {needToGetList.map((text, i) => (
-                      <li key={i}>{text}</li>
-                    ))}
-                  </ul>
-                )}
+                {/* White note-card sitting on the page's cream background
+                    — only the actual list text lives on white, not this
+                    whole view (buttons/confirmation below stay on the
+                    page background). */}
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  {needToGetList.length === 0 ? (
+                    <p className="text-sm text-muted">
+                      Nothing on your list yet — mark an ingredient
+                      &ldquo;Need to get&rdquo; and it&apos;ll show up here.
+                    </p>
+                  ) : (
+                    <ul className="space-y-4 text-sm text-ink">
+                      {needToGetList.map((text, i) => (
+                        <li key={i}>{text}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleCopyList}
