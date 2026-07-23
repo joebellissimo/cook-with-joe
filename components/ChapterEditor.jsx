@@ -274,22 +274,26 @@ export default function ChapterEditor({ initialRecipe }) {
               No video loaded yet
             </div>
           )}
+          {/* Controls for the step currently being tagged — kept inside the
+              same rounded/clipped container as the video, directly below
+              the native scrubber with no gap, so marking a step is the
+              very next action after scrubbing to it. */}
+          <div className="flex items-center justify-between border-t border-ink/10 bg-white px-4 py-2 text-sm text-muted">
+            <span>
+              Current time: <strong>{fmt(currentTime)}s</strong>
+            </span>
+            <button
+              onClick={addStepAtCurrentTime}
+              disabled={!videoSrc}
+              className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            >
+              + Add step here
+            </button>
+          </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between rounded-lg bg-white px-4 py-2 text-sm text-muted shadow-sm">
-          <span>
-            Current time: <strong>{fmt(currentTime)}s</strong>
-          </span>
-          <button
-            onClick={addStepAtCurrentTime}
-            disabled={!videoSrc}
-            className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-          >
-            + Add step here
-          </button>
-        </div>
         {videoSrc && (
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-3 text-xs text-muted">
             Tip: with the video loaded (and not typing in a field), the{" "}
             <kbd className="rounded border border-ink/15 bg-cream px-1">Left</kbd>{" "}
             /{" "}
