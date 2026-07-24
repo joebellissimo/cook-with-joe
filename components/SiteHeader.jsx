@@ -9,13 +9,19 @@ export default function SiteHeader() {
   // scrollable steps + a control bar pinned to the bottom of the screen).
   // The site header's height pushes that control bar below the visible
   // viewport on phones, so it's hidden there specifically — still shown at
-  // md and up, and on every other page at every size.
+  // md and up, and on every other page at every size. Also hidden in
+  // phone landscape even past md's width threshold — most current phones
+  // are wider than 768px in landscape, so without this the header would
+  // reappear there and push the player's own h-dvh lock past the actual
+  // viewport height, causing the whole page to scroll despite the
+  // player's own container being correctly locked. Mirrors the
+  // landscape:max-[950px]: treatment in components/RecipePlayer.jsx.
   const isRecipePage = pathname?.startsWith("/recipe/");
 
   return (
     <header
       className={`sticky top-0 z-30 border-b border-ink/10 bg-cream/95 backdrop-blur ${
-        isRecipePage ? "hidden md:block" : ""
+        isRecipePage ? "hidden landscape:max-[950px]:hidden! md:block" : ""
       }`}
     >
       <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">

@@ -921,12 +921,30 @@ export default function RecipePlayer({ recipe, onRead }) {
           viewport instead of letting the page scroll. Video is the only
           child given an explicit row-span (2); the other two children
           land in the right column via plain grid auto-placement — row 1
-          then row 2 — with no explicit placement needed on them. */}
-      <div className="flex min-h-0 flex-1 flex-col landscape:max-[950px]:grid! landscape:max-[950px]:grid-cols-[1fr_20rem]! landscape:max-[950px]:grid-rows-[auto_minmax(0,1fr)]! landscape:max-[950px]:gap-3! md:grid md:flex-none md:grid-cols-3 md:gap-6">
+          then row 2 — with no explicit placement needed on them.
+          flex-1! is load-bearing here, not decorative: at a wide
+          landscape phone (>=768px), md:flex-none also matches and
+          resets flex-grow to 0, and without this override this element
+          never actually grows to fill playerRoot's height — it shrinks
+          to fit its own content instead, which is what was silently
+          capping the whole grid (and therefore the video inside it) to
+          far less than the real viewport height. Caught by walking the
+          actual computed-style chain in a real headless render, not by
+          reading the generated CSS. */}
+      <div className="flex min-h-0 flex-1 flex-col landscape:max-[950px]:grid! landscape:max-[950px]:flex-1! landscape:max-[950px]:grid-cols-[1fr_20rem]! landscape:max-[950px]:grid-rows-[auto_minmax(0,1fr)]! landscape:max-[950px]:gap-3! md:grid md:flex-none md:grid-cols-3 md:gap-6">
         {/* Video section — 2/3 of the viewport height on mobile portrait;
             full-height left column in phone landscape (see above). */}
-        <div className="flex min-h-0 flex-[2] flex-col landscape:max-[950px]:col-span-1! landscape:max-[950px]:row-span-2! landscape:max-[950px]:flex! landscape:max-[950px]:flex-col! md:col-span-2 md:block md:flex-none">
-          <div className="relative min-h-0 flex-1 overflow-hidden bg-black shadow landscape:max-[950px]:flex-1! landscape:max-[950px]:rounded-none! md:flex md:h-auto md:flex-none md:items-center md:justify-center md:rounded-xl">
+        <div className="flex min-h-0 flex-[2] flex-col landscape:max-[950px]:col-span-1! landscape:max-[950px]:row-span-2! landscape:max-[950px]:flex! landscape:max-[950px]:flex-col! landscape:max-[950px]:h-full! md:col-span-2 md:block md:flex-none">
+          {/* h-full here (not just flex-1) — measured directly with
+              Playwright against a real video: flex-1/grid-row-span alone
+              left height:100% on the <video> below unresolved (it fell
+              back to sizing off the video's own intrinsic aspect ratio
+              instead of filling the column), even though width:100%
+              worked correctly through the same chain. An explicit h-full
+              at every level removes any dependency on implicit stretch
+              sizing actually being treated as a definite height by the
+              time it reaches the video several layers down. */}
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-black shadow landscape:max-[950px]:flex-1! landscape:max-[950px]:h-full! landscape:max-[950px]:rounded-none! md:flex md:h-auto md:flex-none md:items-center md:justify-center md:rounded-xl">
             {/* Mobile-only title/category overlay, anchored to the top edge
                 of the video instead of centered like the step-finished
                 overlay below — small text, non-blocking of the frame. The

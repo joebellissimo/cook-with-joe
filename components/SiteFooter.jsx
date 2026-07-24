@@ -21,13 +21,15 @@ export default function SiteFooter() {
   const pathname = usePathname();
   // Same reasoning as SiteHeader: the recipe player is a full-viewport
   // (h-dvh) mobile layout, and the footer's height below it forces a small
-  // scroll to reveal it — hidden there specifically, below md only.
+  // scroll to reveal it — hidden there specifically, below md, and also
+  // in phone landscape past md's width threshold (see SiteHeader.jsx for
+  // the full explanation).
   const isRecipePage = pathname?.startsWith("/recipe/");
 
   return (
     <footer
       className={`border-t border-ink/10 bg-white ${
-        isRecipePage ? "hidden md:block" : ""
+        isRecipePage ? "hidden landscape:max-[950px]:hidden! md:block" : ""
       }`}
     >
       <div className="mx-auto flex max-w-5xl flex-col items-center gap-1 px-4 py-6 text-xs text-muted sm:flex-row sm:justify-between sm:gap-3">
