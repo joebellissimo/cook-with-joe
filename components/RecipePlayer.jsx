@@ -6,7 +6,7 @@ import StepList from "@/components/StepList";
 import WatchReadToggle from "@/components/WatchReadToggle";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { matchVoiceCommand } from "@/lib/voiceCommands";
-import { playIngredientCheckedSound, playIngredientUncheckedSound } from "@/lib/sound";
+import { playConfirmationChime, unlockAudioContext } from "@/lib/sound";
 
 // The "need to get" list is a single freeform editable text value (see
 // needToGetText below), not a derived list — so checking/unchecking
@@ -284,9 +284,18 @@ export default function RecipePlayer({ recipe, onRead }) {
   // Radio "I have" — selecting it is a no-op if it's already selected
   // (the default), otherwise clears the "need" flag. Unlike a checkbox
   // toggle, a radio has no "back to unset" state to return to — "have"
-  // itself IS that default.
+  // itself IS that default. Confirmation chime replaces the old
+  // distinct checked/unchecked ingredient pops — one shared "processed"
+  // cue now (see lib/sound.js), rather than a different sound per
+  // action, per this round's design intent.
   const setIngredientHave = useCallback(
     (index) => {
+      // Belt-and-suspenders resume attempt on this genuine gesture, before
+      // the early-return below — otherwise the "already selected" no-op
+      // case would skip any resume attempt entirely, since
+      // playConfirmationChime() (which also resumes) never runs on that
+      // path either. See lib/sound.js for the primary fix.
+      unlockAudioContext();
       if (!neededIngredients.has(index)) return;
       setNeededIngredients((prev) => {
         const next = new Set(prev);
@@ -295,7 +304,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       });
       const ingredientText = recipe.ingredients[index];
       setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
-      playIngredientCheckedSound();
+      playConfirmationChime();
     },
     [neededIngredients, recipe.ingredients]
   );
@@ -304,11 +313,13 @@ export default function RecipePlayer({ recipe, onRead }) {
   // setIngredientHave above.
   const setIngredientNeed = useCallback(
     (index) => {
+      // Same belt-and-suspenders resume attempt as setIngredientHave above.
+      unlockAudioContext();
       if (neededIngredients.has(index)) return;
       setNeededIngredients((prev) => new Set(prev).add(index));
       const ingredientText = recipe.ingredients[index];
       setNeedToGetText((prevText) => addIngredientLine(prevText, ingredientText));
-      playIngredientUncheckedSound();
+      playConfirmationChime();
     },
     [neededIngredients, recipe.ingredients]
   );
@@ -334,7 +345,7 @@ export default function RecipePlayer({ recipe, onRead }) {
         const ingredientText = recipe.ingredients[index];
         setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
       }
-      playIngredientCheckedSound();
+      playConfirmationChime();
       setShowIngredients(true);
     },
     [neededIngredients, recipe.ingredients]
@@ -355,6 +366,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       const ingredientText = recipe.ingredients[index];
       setNeededIngredients((prev) => new Set(prev).add(index));
       setNeedToGetText((prevText) => addIngredientLine(prevText, ingredientText));
+      playConfirmationChime();
       setShowIngredients(true);
     },
     [recipe.ingredients]
@@ -379,7 +391,9 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, []);
 
   // Commits every checked candidate to the "need to get" list in one go
-  // — no partial commit without this explicit confirmation.
+  // — no partial commit without this explicit confirmation. Same "Need
+  // to get" action as setIngredientNeed/handleNeedIngredientAction
+  // above, just for multiple ingredients at once — same chime.
   const confirmAmbiguousAddToList = useCallback(() => {
     setNeededIngredients((prev) => {
       const next = new Set(prev);
@@ -393,6 +407,7 @@ export default function RecipePlayer({ recipe, onRead }) {
       });
       return text;
     });
+    playConfirmationChime();
     setAmbiguousCandidates(null);
     setAmbiguousChecked(new Set());
   }, [ambiguousChecked, recipe.ingredients]);
@@ -403,12 +418,17 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, []);
 
   const handleCopyList = useCallback(() => {
+    // Resume attempt on this real gesture, synchronously here (not inside
+    // the .then() below) — the clipboard write is async, so this is the
+    // last point still unambiguously within the click's call stack.
+    unlockAudioContext();
     // Copies exactly what's in the box — including any manual edits —
     // not a regenerated version.
     navigator.clipboard
       .writeText(needToGetText)
       .then(() => {
         setCopyConfirmation(true);
+        playConfirmationChime();
         if (copyConfirmationTimeoutRef.current) {
           clearTimeout(copyConfirmationTimeoutRef.current);
         }
@@ -425,20 +445,32 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, [needToGetText]);
 
   const handleDoneWithIngredients = useCallback(() => {
+    // This gesture never triggers a chime itself, so without an explicit
+    // resume attempt here it would have no chance to recover a
+    // suspended/closed AudioContext before the next voice-triggered sound
+    // needs it.
+    unlockAudioContext();
     setShowIngredients(false);
   }, []);
 
   // Click on the checkmark in the steps list — toggles, unlike the voice
   // commands below which explicitly set (mirrors check/uncheck-ingredient:
-  // voice sets a specific state, direct UI interaction toggles).
-  const toggleStepDone = useCallback((stepId) => {
-    setDoneSteps((prev) => {
-      const next = new Set(prev);
-      if (next.has(stepId)) next.delete(stepId);
-      else next.add(stepId);
-      return next;
-    });
-  }, []);
+  // voice sets a specific state, direct UI interaction toggles). Chime
+  // only on the marking-done direction — un-marking isn't a "confirmed
+  // done" action, so it stays silent.
+  const toggleStepDone = useCallback(
+    (stepId) => {
+      const willBeDone = !doneSteps.has(stepId);
+      setDoneSteps((prev) => {
+        const next = new Set(prev);
+        if (willBeDone) next.add(stepId);
+        else next.delete(stepId);
+        return next;
+      });
+      if (willBeDone) playConfirmationChime();
+    },
+    [doneSteps]
+  );
 
   // Downward-swipe-to-dismiss on the ingredients panel. Tracked in refs
   // (not state) since touchmove fires continuously and shouldn't trigger a
@@ -632,6 +664,7 @@ export default function RecipePlayer({ recipe, onRead }) {
         // Explicitly set (not a toggle) — saying "mark chop garlic done"
         // when it's already done shouldn't accidentally un-mark it.
         setDoneSteps((prev) => new Set(prev).add(action.step.id));
+        playConfirmationChime();
         return;
       }
 
@@ -691,7 +724,10 @@ export default function RecipePlayer({ recipe, onRead }) {
           // available, else activeStep (the last step explicitly
           // navigated to), for a sensible target even during a gap.
           const target = currentStep ?? activeStep;
-          if (target) setDoneSteps((prev) => new Set(prev).add(target.id));
+          if (target) {
+            setDoneSteps((prev) => new Set(prev).add(target.id));
+            playConfirmationChime();
+          }
           break;
         }
         // showIngredients is always false by this point — the panel-open
@@ -752,6 +788,19 @@ export default function RecipePlayer({ recipe, onRead }) {
   // overlay is dismissed either way (showWelcome), by construction —
   // both are direct inputs to this, not something separately reset.
   const micShouldPulse = showWelcome && !voice.listening;
+
+  // Every mic toggle button below calls this instead of voice.toggle
+  // directly, so the AudioContext gets warmed/unlocked here — turning
+  // the mic on is the one action in this flow guaranteed to be a real
+  // click before any voice-triggered confirmation chime needs to play.
+  // Chimes fired later from SpeechRecognition's onresult callback (a
+  // command actually being processed) aren't a user gesture as far as
+  // iOS Safari is concerned, so without this they'd silently fail to
+  // play the first time.
+  const handleToggleVoice = useCallback(() => {
+    unlockAudioContext();
+    voice.toggle();
+  }, [voice]);
 
   const loopCheckbox = (
     <input
@@ -927,7 +976,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                   Tip: you can turn on the mic and just answer me.
                 </p>
                 <button
-                  onClick={voice.toggle}
+                  onClick={handleToggleVoice}
                   disabled={!voice.supported}
                   className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white transition disabled:opacity-40 ${
                     voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
@@ -1066,11 +1115,14 @@ export default function RecipePlayer({ recipe, onRead }) {
                     itself already shows the state clearly, and "have" is
                     now the default for everything rather than a
                     call-out-worthy exception. */}
+                {/* Emphasis lives on each row's own ingredient text
+                    (isNeed below), not the header — the two column
+                    headers read identically to each other. */}
                 <div className="grid grid-cols-[4.5rem_4.5rem_1fr] items-center gap-x-1.5 pb-1">
                   <span className="text-center text-[10px] font-normal uppercase leading-tight tracking-wide text-muted">
                     I have
                   </span>
-                  <span className="text-center text-[10px] font-bold uppercase leading-tight tracking-wide text-muted">
+                  <span className="text-center text-[10px] font-normal uppercase leading-tight tracking-wide text-muted">
                     Need to get
                   </span>
                   <span />
@@ -1103,7 +1155,9 @@ export default function RecipePlayer({ recipe, onRead }) {
                             className="accent-brand"
                           />
                         </span>
-                        <span className="text-ink">{ingredient}</span>
+                        <span className={isNeed ? "font-bold text-ink" : "text-ink"}>
+                          {ingredient}
+                        </span>
                       </li>
                     );
                   })}
@@ -1181,7 +1235,7 @@ export default function RecipePlayer({ recipe, onRead }) {
               )}
 
               <button
-                onClick={voice.toggle}
+                onClick={handleToggleVoice}
                 disabled={!voice.supported}
                 className={`ml-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-white transition disabled:opacity-40 ${
                   voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
@@ -1336,7 +1390,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                     Done
                   </button>
                   <button
-                    onClick={voice.toggle}
+                    onClick={handleToggleVoice}
                     disabled={!voice.supported}
                     aria-label="Toggle voice control"
                     className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
@@ -1378,7 +1432,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                   →
                 </button>
                 <button
-                  onClick={voice.toggle}
+                  onClick={handleToggleVoice}
                   disabled={!voice.supported}
                   aria-label="Toggle voice control"
                   className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
