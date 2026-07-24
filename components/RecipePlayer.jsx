@@ -6,7 +6,56 @@ import StepList from "@/components/StepList";
 import WatchReadToggle from "@/components/WatchReadToggle";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { matchVoiceCommand } from "@/lib/voiceCommands";
-import { playIngredientCheckedSound, playIngredientUncheckedSound } from "@/lib/sound";
+import { playConfirmationChime, unlockAudioContext } from "@/lib/sound";
+
+// The "need to get" list is a single freeform editable text value (see
+// needToGetText below), not a derived list — so checking/unchecking
+// "Need to get" for a specific ingredient has to surgically add or
+// remove just that ingredient's own line, by exact-text match, rather
+// than regenerating the whole value and wiping out any manual edits.
+// Entries are blocks separated by one or more blank lines (matching the
+// existing blank-line-between-entries convention); a manually-typed
+// multi-line note without a blank line inside it survives as one entry.
+function parseIngredientEntries(text) {
+  return text
+    .split(/\n\s*\n+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function addIngredientLine(text, line) {
+  const trimmedLine = line.trim();
+  const entries = parseIngredientEntries(text);
+  if (entries.includes(trimmedLine)) return text;
+  entries.push(trimmedLine);
+  return entries.join("\n\n");
+}
+
+function removeIngredientLine(text, line) {
+  const trimmedLine = line.trim();
+  return parseIngredientEntries(text)
+    .filter((entry) => entry !== trimmedLine)
+    .join("\n\n");
+}
+
+// Shared "voice input is scoped to this modal/panel only" gate, used by
+// both the welcome overlay and the ingredients panel below — the exact
+// same bug shape hit both: passing the full steps array let the general
+// fuzzy step matcher fire underneath a modal that should own voice
+// input exclusively (for the ingredients panel specifically, "I need
+// eggs" could fuzzy-match a step whose title happens to share a word,
+// e.g. "Hand mix ingredients," and start that step playing behind the
+// panel). Resolves the transcript against a restricted steps/ingredients
+// pair (so whichever fuzzy matching depends on either is disabled per
+// caller's needs) and returns the raw action only if its type is in the
+// caller's allowlist — everything else, including fixed RULES actions
+// like "next" or "play" (which aren't steps/ingredients-gated and would
+// otherwise leak through even with empty arrays), comes back as null.
+function matchScopedVoiceCommand(transcript, { steps = [], ingredients = [], allow }) {
+  const action = matchVoiceCommand(transcript, steps, ingredients);
+  const type = action && typeof action === "object" ? action.type : action;
+  return allow.has(type) ? action : null;
+}
 
 export default function RecipePlayer({ recipe, onRead }) {
   const steps = recipe.steps;
@@ -23,7 +72,32 @@ export default function RecipePlayer({ recipe, onRead }) {
   // Quick-glance ingredients checklist, slid up over the video on mobile —
   // doesn't pause playback or otherwise leave hands-free mode.
   const [showIngredients, setShowIngredients] = useState(false);
-  const [checkedIngredients, setCheckedIngredients] = useState(() => new Set());
+  // Which ingredients are flagged "Need to get," by index in
+  // recipe.ingredients. Every ingredient defaults to "I have" (most
+  // people already have most things — they're only flagging
+  // exceptions), so there's no separate stored "have" state to track;
+  // "have" is just the absence of "need," backing the mutually-exclusive
+  // I-have/Need-to-get radio pair per row. Same session-only lifecycle
+  // as doneSteps below (resets on reload).
+  const [neededIngredients, setNeededIngredients] = useState(() => new Set());
+  // "I need <word>" voice matches that tie between more than one real
+  // ingredient (e.g. "garlic" against both "garlic" and "garlic powder")
+  // surface a pick-one-or-more popup instead of guessing. Array of
+  // candidate ingredient indices while it's showing, else null.
+  const [ambiguousCandidates, setAmbiguousCandidates] = useState(null);
+  const [ambiguousChecked, setAmbiguousChecked] = useState(() => new Set());
+  // The "need to get" list itself — a single freeform editable text
+  // value (not derived from neededIngredients), so the user can type
+  // notes, fix typos, or add items that were never in the ingredient
+  // list at all. Selecting "Need to get" surgically adds or removes
+  // that ingredient's own line (see addIngredientLine/
+  // removeIngredientLine above) rather than regenerating this whole
+  // value, so manual edits survive. Session-only, same lifecycle as
+  // neededIngredients above.
+  const [needToGetText, setNeedToGetText] = useState("");
+  // Brief confirmation after "Copy list" — auto-dismisses on its own.
+  const [copyConfirmation, setCopyConfirmation] = useState(false);
+  const copyConfirmationTimeoutRef = useRef(null);
   // Steps checked off via "mark done"/"mark [step] done" or the checkmark
   // in the steps list. Session-only, same lifecycle as loopEnabled above —
   // resets on reload, no localStorage.
@@ -207,35 +281,196 @@ export default function RecipePlayer({ recipe, onRead }) {
     setContinuousMode(false);
   }, []);
 
-  const toggleIngredientChecked = useCallback(
+  // Radio "I have" — selecting it is a no-op if it's already selected
+  // (the default), otherwise clears the "need" flag. Unlike a checkbox
+  // toggle, a radio has no "back to unset" state to return to — "have"
+  // itself IS that default. Confirmation chime replaces the old
+  // distinct checked/unchecked ingredient pops — one shared "processed"
+  // cue now (see lib/sound.js), rather than a different sound per
+  // action, per this round's design intent.
+  const setIngredientHave = useCallback(
     (index) => {
-      // Decided from current state rather than inside the setState updater,
-      // so the sound (a side effect) can't fire twice under React Strict
-      // Mode's dev-only double-invocation of updater functions.
-      const willBeChecked = !checkedIngredients.has(index);
-      setCheckedIngredients((prev) => {
+      // Belt-and-suspenders resume attempt on this genuine gesture, before
+      // the early-return below — otherwise the "already selected" no-op
+      // case would skip any resume attempt entirely, since
+      // playConfirmationChime() (which also resumes) never runs on that
+      // path either. See lib/sound.js for the primary fix.
+      unlockAudioContext();
+      if (!neededIngredients.has(index)) return;
+      setNeededIngredients((prev) => {
         const next = new Set(prev);
-        if (willBeChecked) next.add(index);
-        else next.delete(index);
+        next.delete(index);
         return next;
       });
-      if (willBeChecked) playIngredientCheckedSound();
-      else playIngredientUncheckedSound();
+      const ingredientText = recipe.ingredients[index];
+      setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
+      playConfirmationChime();
     },
-    [checkedIngredients]
+    [neededIngredients, recipe.ingredients]
   );
 
-  // Click on the checkmark in the steps list — toggles, unlike the voice
-  // commands below which explicitly set (mirrors check/uncheck-ingredient:
-  // voice sets a specific state, direct UI interaction toggles).
-  const toggleStepDone = useCallback((stepId) => {
-    setDoneSteps((prev) => {
+  // Radio "Need to get" — same no-op-if-already-selected shape as
+  // setIngredientHave above.
+  const setIngredientNeed = useCallback(
+    (index) => {
+      // Same belt-and-suspenders resume attempt as setIngredientHave above.
+      unlockAudioContext();
+      if (neededIngredients.has(index)) return;
+      setNeededIngredients((prev) => new Set(prev).add(index));
+      const ingredientText = recipe.ingredients[index];
+      setNeedToGetText((prevText) => addIngredientLine(prevText, ingredientText));
+      playConfirmationChime();
+    },
+    [neededIngredients, recipe.ingredients]
+  );
+
+  // Voice equivalents of the two ingredient actions above — extracted so
+  // handleVoiceCommand below can call the exact same logic from both its
+  // normal path and its ingredients-panel-scoped path (matchScopedVoiceCommand)
+  // without duplicating the state-mutation details in two places.
+  const handleCheckIngredientAction = useCallback(
+    (index) => {
+      // "check off eggs"/"got eggs"/"I have eggs" — confirms "have" (the
+      // default), clearing "need" if it was set. "uncheck"/"unmark" below
+      // ends up doing the same thing now that there's no third "unset"
+      // state left to distinguish them by — both are just "this
+      // ingredient is not on the need-to-get list."
+      const wasNeed = neededIngredients.has(index);
+      if (wasNeed) {
+        setNeededIngredients((prev) => {
+          const next = new Set(prev);
+          next.delete(index);
+          return next;
+        });
+        const ingredientText = recipe.ingredients[index];
+        setNeedToGetText((prevText) => removeIngredientLine(prevText, ingredientText));
+      }
+      playConfirmationChime();
+      setShowIngredients(true);
+    },
+    [neededIngredients, recipe.ingredients]
+  );
+
+  const handleUncheckIngredientAction = useCallback(
+    (index) => {
+      handleCheckIngredientAction(index);
+    },
+    [handleCheckIngredientAction]
+  );
+
+  const handleNeedIngredientAction = useCallback(
+    (index) => {
+      // "I need breadcrumbs" — exactly one ingredient matched.
+      // Explicitly set (not toggle), same reasoning as check-ingredient
+      // above.
+      const ingredientText = recipe.ingredients[index];
+      setNeededIngredients((prev) => new Set(prev).add(index));
+      setNeedToGetText((prevText) => addIngredientLine(prevText, ingredientText));
+      playConfirmationChime();
+      setShowIngredients(true);
+    },
+    [recipe.ingredients]
+  );
+
+  const handleNeedIngredientAmbiguousAction = useCallback((indices) => {
+    // More than one ingredient tied for the best fuzzy match (e.g.
+    // "garlic" against both "garlic" and "garlic powder") — ask rather
+    // than guess.
+    setAmbiguousCandidates(indices);
+    setAmbiguousChecked(new Set());
+    setShowIngredients(true);
+  }, []);
+
+  const toggleAmbiguousChecked = useCallback((index) => {
+    setAmbiguousChecked((prev) => {
       const next = new Set(prev);
-      if (next.has(stepId)) next.delete(stepId);
-      else next.add(stepId);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   }, []);
+
+  // Commits every checked candidate to the "need to get" list in one go
+  // — no partial commit without this explicit confirmation. Same "Need
+  // to get" action as setIngredientNeed/handleNeedIngredientAction
+  // above, just for multiple ingredients at once — same chime.
+  const confirmAmbiguousAddToList = useCallback(() => {
+    setNeededIngredients((prev) => {
+      const next = new Set(prev);
+      ambiguousChecked.forEach((index) => next.add(index));
+      return next;
+    });
+    setNeedToGetText((prevText) => {
+      let text = prevText;
+      ambiguousChecked.forEach((index) => {
+        text = addIngredientLine(text, recipe.ingredients[index]);
+      });
+      return text;
+    });
+    playConfirmationChime();
+    setAmbiguousCandidates(null);
+    setAmbiguousChecked(new Set());
+  }, [ambiguousChecked, recipe.ingredients]);
+
+  const cancelAmbiguous = useCallback(() => {
+    setAmbiguousCandidates(null);
+    setAmbiguousChecked(new Set());
+  }, []);
+
+  const handleCopyList = useCallback(() => {
+    // Resume attempt on this real gesture, synchronously here (not inside
+    // the .then() below) — the clipboard write is async, so this is the
+    // last point still unambiguously within the click's call stack.
+    unlockAudioContext();
+    // Copies exactly what's in the box — including any manual edits —
+    // not a regenerated version.
+    navigator.clipboard
+      .writeText(needToGetText)
+      .then(() => {
+        setCopyConfirmation(true);
+        playConfirmationChime();
+        if (copyConfirmationTimeoutRef.current) {
+          clearTimeout(copyConfirmationTimeoutRef.current);
+        }
+        copyConfirmationTimeoutRef.current = setTimeout(
+          () => setCopyConfirmation(false),
+          4000
+        );
+      })
+      .catch(() => {
+        // Clipboard access can fail (permissions, insecure context) —
+        // the list stays visible and readable either way, so this just
+        // silently skips the confirmation rather than showing an error.
+      });
+  }, [needToGetText]);
+
+  const handleDoneWithIngredients = useCallback(() => {
+    // This gesture never triggers a chime itself, so without an explicit
+    // resume attempt here it would have no chance to recover a
+    // suspended/closed AudioContext before the next voice-triggered sound
+    // needs it.
+    unlockAudioContext();
+    setShowIngredients(false);
+  }, []);
+
+  // Click on the checkmark in the steps list — toggles, unlike the voice
+  // commands below which explicitly set (mirrors check/uncheck-ingredient:
+  // voice sets a specific state, direct UI interaction toggles). Chime
+  // only on the marking-done direction — un-marking isn't a "confirmed
+  // done" action, so it stays silent.
+  const toggleStepDone = useCallback(
+    (stepId) => {
+      const willBeDone = !doneSteps.has(stepId);
+      setDoneSteps((prev) => {
+        const next = new Set(prev);
+        if (willBeDone) next.add(stepId);
+        else next.delete(stepId);
+        return next;
+      });
+      if (willBeDone) playConfirmationChime();
+    },
+    [doneSteps]
+  );
 
   // Downward-swipe-to-dismiss on the ingredients panel. Tracked in refs
   // (not state) since touchmove fires continuously and shouldn't trigger a
@@ -326,12 +561,65 @@ export default function RecipePlayer({ recipe, onRead }) {
       // play, loop-on, ...) can reach the switch below and act on the
       // video hidden behind the overlay either.
       if (showWelcome) {
-        const overlayAction = matchVoiceCommand(transcript, [], []);
+        const overlayAction = matchScopedVoiceCommand(transcript, {
+          allow: new Set(["dismiss-welcome", "show-ingredients"]),
+        });
         if (overlayAction === "dismiss-welcome") {
           dismissWelcome();
         } else if (overlayAction === "show-ingredients") {
           dismissWelcome();
           setShowIngredients(true);
+        }
+        return;
+      }
+
+      // While the ambiguous-ingredient-match popup is up, voice has no
+      // defined way to interact with its checkboxes (click-only, per
+      // spec) — block everything else too, same modal-scoping lesson as
+      // the welcome overlay above, so a stray "next step" etc. can't act
+      // on the video hidden behind it.
+      if (ambiguousCandidates) {
+        return;
+      }
+
+      // While the ingredients panel is open, voice routes ONLY to its own
+      // intents — "I need"/"I have" per ingredient, and "done" — never to
+      // general step/playback commands. Same shape as the welcome-overlay
+      // bug above: a phrase like "I need eggs" could otherwise still
+      // fuzzy-match a step whose title happens to share a word (e.g. one
+      // titled "Hand mix ingredients") via the general matcher and start
+      // it playing behind the panel. matchScopedVoiceCommand blocks that
+      // (empty steps disables step fuzzy-matching) AND blocks fixed RULES
+      // actions like "next"/"play" (which aren't steps-gated and would
+      // otherwise leak through even with empty steps) via the allowlist.
+      if (showIngredients) {
+        const ingredientsAction = matchScopedVoiceCommand(transcript, {
+          ingredients: recipe.ingredients,
+          allow: new Set([
+            "check-ingredient",
+            "uncheck-ingredient",
+            "need-ingredient",
+            "need-ingredient-ambiguous",
+            "hide-ingredients",
+          ]),
+        });
+        if (ingredientsAction && typeof ingredientsAction === "object") {
+          switch (ingredientsAction.type) {
+            case "check-ingredient":
+              handleCheckIngredientAction(ingredientsAction.index);
+              break;
+            case "uncheck-ingredient":
+              handleUncheckIngredientAction(ingredientsAction.index);
+              break;
+            case "need-ingredient":
+              handleNeedIngredientAction(ingredientsAction.index);
+              break;
+            case "need-ingredient-ambiguous":
+              handleNeedIngredientAmbiguousAction(ingredientsAction.indices);
+              break;
+          }
+        } else if (ingredientsAction === "hide-ingredients") {
+          setShowIngredients(false);
         }
         return;
       }
@@ -357,27 +645,26 @@ export default function RecipePlayer({ recipe, onRead }) {
         return;
       }
       if (action && typeof action === "object" && action.type === "check-ingredient") {
-        // Explicitly set checked (not a toggle) — saying "check off eggs"
-        // when eggs is already checked shouldn't accidentally uncheck it.
-        setCheckedIngredients((prev) => new Set(prev).add(action.index));
-        playIngredientCheckedSound();
-        setShowIngredients(true);
+        handleCheckIngredientAction(action.index);
         return;
       }
       if (action && typeof action === "object" && action.type === "uncheck-ingredient") {
-        setCheckedIngredients((prev) => {
-          const next = new Set(prev);
-          next.delete(action.index);
-          return next;
-        });
-        playIngredientUncheckedSound();
-        setShowIngredients(true);
+        handleUncheckIngredientAction(action.index);
+        return;
+      }
+      if (action && typeof action === "object" && action.type === "need-ingredient") {
+        handleNeedIngredientAction(action.index);
+        return;
+      }
+      if (action && typeof action === "object" && action.type === "need-ingredient-ambiguous") {
+        handleNeedIngredientAmbiguousAction(action.indices);
         return;
       }
       if (action && typeof action === "object" && action.type === "mark-step-done") {
         // Explicitly set (not a toggle) — saying "mark chop garlic done"
         // when it's already done shouldn't accidentally un-mark it.
         setDoneSteps((prev) => new Set(prev).add(action.step.id));
+        playConfirmationChime();
         return;
       }
 
@@ -437,26 +724,32 @@ export default function RecipePlayer({ recipe, onRead }) {
           // available, else activeStep (the last step explicitly
           // navigated to), for a sensible target even during a gap.
           const target = currentStep ?? activeStep;
-          if (target) setDoneSteps((prev) => new Set(prev).add(target.id));
+          if (target) {
+            setDoneSteps((prev) => new Set(prev).add(target.id));
+            playConfirmationChime();
+          }
           break;
         }
+        // showIngredients is always false by this point — the panel-open
+        // case returns early above — so these always target the steps
+        // list, never the video-overlay ingredients panel.
         case "scroll-down": {
-          const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
+          const el = stepsListRef.current;
           el?.scrollBy({ top: el.clientHeight, behavior: "smooth" });
           break;
         }
         case "scroll-up": {
-          const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
+          const el = stepsListRef.current;
           el?.scrollBy({ top: -el.clientHeight, behavior: "smooth" });
           break;
         }
         case "scroll-top": {
-          const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
+          const el = stepsListRef.current;
           el?.scrollTo({ top: 0, behavior: "smooth" });
           break;
         }
         case "scroll-bottom": {
-          const el = showIngredients ? ingredientsListRef.current : stepsListRef.current;
+          const el = stepsListRef.current;
           el?.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
           break;
         }
@@ -470,6 +763,11 @@ export default function RecipePlayer({ recipe, onRead }) {
       showIngredients,
       showWelcome,
       dismissWelcome,
+      ambiguousCandidates,
+      handleCheckIngredientAction,
+      handleUncheckIngredientAction,
+      handleNeedIngredientAction,
+      handleNeedIngredientAmbiguousAction,
       currentStep,
       activeStep,
       playStep,
@@ -490,6 +788,19 @@ export default function RecipePlayer({ recipe, onRead }) {
   // overlay is dismissed either way (showWelcome), by construction —
   // both are direct inputs to this, not something separately reset.
   const micShouldPulse = showWelcome && !voice.listening;
+
+  // Every mic toggle button below calls this instead of voice.toggle
+  // directly, so the AudioContext gets warmed/unlocked here — turning
+  // the mic on is the one action in this flow guaranteed to be a real
+  // click before any voice-triggered confirmation chime needs to play.
+  // Chimes fired later from SpeechRecognition's onresult callback (a
+  // command actually being processed) aren't a user gesture as far as
+  // iOS Safari is concerned, so without this they'd silently fail to
+  // play the first time.
+  const handleToggleVoice = useCallback(() => {
+    unlockAudioContext();
+    voice.toggle();
+  }, [voice]);
 
   const loopCheckbox = (
     <input
@@ -537,6 +848,17 @@ export default function RecipePlayer({ recipe, onRead }) {
           🧾 Ingredients
         </button>
       )}
+    </div>
+  );
+
+  // Replaces Repeat/Loop/Ingredients (stepControlsRow, and their desktop
+  // equivalents below) while the ingredients panel is open — none of
+  // those apply while reviewing ingredients, and this explains where
+  // "Need to get" picks actually end up instead.
+  const ingredientsActiveNotice = (
+    <div className="rounded-lg bg-gray-700 px-3 py-2.5 text-center text-sm font-bold leading-snug text-white">
+      <p>Anything you need will be added to the list below.</p>
+      <p>You can then copy it when done.</p>
     </div>
   );
 
@@ -654,7 +976,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                   Tip: you can turn on the mic and just answer me.
                 </p>
                 <button
-                  onClick={voice.toggle}
+                  onClick={handleToggleVoice}
                   disabled={!voice.supported}
                   className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white transition disabled:opacity-40 ${
                     voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
@@ -663,6 +985,54 @@ export default function RecipePlayer({ recipe, onRead }) {
                 >
                   🎙️ {voice.listening ? "Listening…" : "Turn on mic"}
                 </button>
+              </div>
+            )}
+            {/* Ambiguous "I need <word>" voice match — more than one real
+                ingredient tied for the best fuzzy match (e.g. "garlic"
+                against both "garlic" and "garlic powder"), so this asks
+                rather than guessing. z-40, above the welcome overlay's
+                z-30 — the two can't actually coexist in practice, but
+                this stays on top if that ever changes. Click-only (see
+                the voice-routing gate above); multi-select since someone
+                might genuinely need more than one candidate. */}
+            {ambiguousCandidates && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Which ingredient did you mean?"
+                className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/80 px-6 text-center text-white"
+              >
+                <p className="text-base font-semibold">Which one did you mean?</p>
+                <ul className="w-full max-w-xs space-y-2 text-left">
+                  {ambiguousCandidates.map((index) => (
+                    <li key={index}>
+                      <label className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={ambiguousChecked.has(index)}
+                          onChange={() => toggleAmbiguousChecked(index)}
+                          className="accent-brand"
+                        />
+                        <span className="text-sm text-white">{recipe.ingredients[index]}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex gap-3">
+                  <button
+                    onClick={cancelAmbiguous}
+                    className="rounded-full border border-white/30 px-4 py-2 text-sm font-medium text-white hover:bg-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmAmbiguousAddToList}
+                    disabled={ambiguousChecked.size === 0}
+                    className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-40"
+                  >
+                    Add to list
+                  </button>
+                </div>
               </div>
             )}
             {/* Current-step title — driven by currentStep, which is null
@@ -729,22 +1099,68 @@ export default function RecipePlayer({ recipe, onRead }) {
                     ✕
                   </button>
                 </div>
+                {/* Same grid-template-columns literal on the header and
+                    every row below is what keeps the two radio columns
+                    aligned down the whole list — a fixed-width column
+                    (not "auto") guarantees the header and every row agree
+                    on width regardless of that row's own content, and
+                    "items-start" plus the text column being its own grid
+                    cell is what keeps a wrapped second line under the
+                    first line's text rather than sliding under a radio.
+                    Radios lead (left), text follows. Each row is its own
+                    two-radio group (name keyed by index) — mutually
+                    exclusive, always exactly one selected, defaulting to
+                    "I have" (see neededIngredients above). No more
+                    crossed-off text when "have" is selected — the radio
+                    itself already shows the state clearly, and "have" is
+                    now the default for everything rather than a
+                    call-out-worthy exception. */}
+                {/* Emphasis lives on each row's own ingredient text
+                    (isNeed below), not the header — the two column
+                    headers read identically to each other. */}
+                <div className="grid grid-cols-[4.5rem_4.5rem_1fr] items-center gap-x-1.5 pb-1">
+                  <span className="text-center text-[10px] font-normal uppercase leading-tight tracking-wide text-muted">
+                    I have
+                  </span>
+                  <span className="text-center text-[10px] font-normal uppercase leading-tight tracking-wide text-muted">
+                    Need to get
+                  </span>
+                  <span />
+                </div>
                 <ul className="space-y-2 text-sm">
-                  {recipe.ingredients.map((ingredient, i) => (
-                    <li key={i}>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={checkedIngredients.has(i)}
-                          onChange={() => toggleIngredientChecked(i)}
-                          className="accent-brand"
-                        />
-                        <span className={checkedIngredients.has(i) ? "text-muted line-through" : "text-ink"}>
+                  {recipe.ingredients.map((ingredient, i) => {
+                    const isNeed = neededIngredients.has(i);
+                    return (
+                      <li
+                        key={i}
+                        className="grid grid-cols-[4.5rem_4.5rem_1fr] items-start gap-x-1.5 gap-y-1"
+                      >
+                        <span className="flex justify-center pt-0.5">
+                          <input
+                            type="radio"
+                            name={`ingredient-status-${i}`}
+                            checked={!isNeed}
+                            onChange={() => setIngredientHave(i)}
+                            aria-label={`I have ${ingredient}`}
+                            className="accent-brand"
+                          />
+                        </span>
+                        <span className="flex justify-center pt-0.5">
+                          <input
+                            type="radio"
+                            name={`ingredient-status-${i}`}
+                            checked={isNeed}
+                            onChange={() => setIngredientNeed(i)}
+                            aria-label={`Need to get ${ingredient}`}
+                            className="accent-brand"
+                          />
+                        </span>
+                        <span className={isNeed ? "font-bold text-ink" : "text-ink"}>
                           {ingredient}
                         </span>
-                      </label>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -754,49 +1170,72 @@ export default function RecipePlayer({ recipe, onRead }) {
               its own fixed bottom control bar instead. */}
           <div className="hidden md:block">
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                onClick={handlePrevious}
-                disabled={activeIndex <= 0}
-                className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
-              >
-                ← Previous
-              </button>
-              <button
-                onClick={handleTogglePlay}
-                className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
-              >
-                {isPlaying ? "Pause" : "Play"}
-              </button>
-              <button
-                onClick={handleRepeat}
-                className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
-              >
-                ↻ Repeat step
-              </button>
-              <button
-                onClick={handleNext}
-                disabled={activeIndex >= steps.length - 1}
-                className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
-              >
-                Next →
-              </button>
-
-              <label className="ml-1 flex items-center gap-2 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted">
-                {loopCheckbox}
-                Loop this step
-              </label>
-
-              {recipe.ingredients?.length > 0 && (
-                <button
-                  onClick={() => setShowIngredients((v) => !v)}
-                  className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
-                >
-                  🧾 Ingredients
-                </button>
+              {/* Previous/Play/Repeat/Next/Loop/Ingredients don't apply
+                  while reviewing ingredients — replaced with Copy
+                  list/Done, the same relocation the mobile bottom bar
+                  gets below. The mic button stays in place either way,
+                  so voice keeps working from the same spot. */}
+              {showIngredients ? (
+                <>
+                  <button
+                    onClick={handleCopyList}
+                    disabled={!needToGetText.trim()}
+                    className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
+                  >
+                    📋 Copy list
+                  </button>
+                  <button
+                    onClick={handleDoneWithIngredients}
+                    className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+                  >
+                    Done
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handlePrevious}
+                    disabled={activeIndex <= 0}
+                    className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
+                  >
+                    ← Previous
+                  </button>
+                  <button
+                    onClick={handleTogglePlay}
+                    className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-dark"
+                  >
+                    {isPlaying ? "Pause" : "Play"}
+                  </button>
+                  <button
+                    onClick={handleRepeat}
+                    className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
+                  >
+                    ↻ Repeat step
+                  </button>
+                  <button
+                    onClick={handleNext}
+                    disabled={activeIndex >= steps.length - 1}
+                    className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink disabled:opacity-40"
+                  >
+                    Next →
+                  </button>
+                  <label className="ml-1 flex items-center gap-2 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted">
+                    {loopCheckbox}
+                    Loop this step
+                  </label>
+                  {recipe.ingredients?.length > 0 && (
+                    <button
+                      onClick={() => setShowIngredients((v) => !v)}
+                      className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm font-medium text-muted hover:border-brand/40 hover:text-ink"
+                    >
+                      🧾 Ingredients
+                    </button>
+                  )}
+                </>
               )}
 
               <button
-                onClick={voice.toggle}
+                onClick={handleToggleVoice}
                 disabled={!voice.supported}
                 className={`ml-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-white transition disabled:opacity-40 ${
                   voice.listening ? "bg-red-600" : "bg-brand hover:bg-brand-dark"
@@ -806,6 +1245,18 @@ export default function RecipePlayer({ recipe, onRead }) {
                 🎙️ {voice.listening ? "Listening…" : "Voice control"}
               </button>
             </div>
+
+            {showIngredients && (
+              <>
+                <div className="mt-3">{ingredientsActiveNotice}</div>
+                {copyConfirmation && (
+                  <p role="status" className="mt-2 text-xs text-brand-dark">
+                    Your list is copied. You can now paste it into a text,
+                    notes, or elsewhere.
+                  </p>
+                )}
+              </>
+            )}
 
             {!voice.supported && (
               <p className="mt-2 text-xs text-muted">
@@ -843,7 +1294,7 @@ export default function RecipePlayer({ recipe, onRead }) {
             repeat/loop controls in the inline row above (no separate
             ingredients toggle there), so this is md:hidden. */}
         <div className="shrink-0 border-y border-ink/10 bg-white px-3 py-2 md:hidden">
-          {stepControlsRow}
+          {showIngredients ? ingredientsActiveNotice : stepControlsRow}
         </div>
 
         {/* Bottom third — steps list + control bar grouped together so they
@@ -856,58 +1307,142 @@ export default function RecipePlayer({ recipe, onRead }) {
             ref={stepsListRef}
             className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:flex-none md:overflow-visible md:px-0 md:pt-0"
           >
-            <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
-              Steps
-            </h2>
-            {/* currentStep (not activeStepId) drives the highlight/auto-
-                scroll — null in a gap, which StepList already handles by
-                just not matching any item, no highlight, no scroll. */}
-            <StepList
-              steps={steps}
-              activeStepId={currentStep?.id ?? null}
-              onSelect={playStep}
-              doneSteps={doneSteps}
-              onToggleDone={toggleStepDone}
-            />
+            {/* This area doubles as the "need to get" view while the
+                ingredients panel is open — same ref, same voice-driven
+                scroll target (see scroll-up/down/top/bottom above),
+                just different content depending on showIngredients. The
+                white note-card (need-to-get text) gets its own bounded,
+                independently-scrollable height (flex-1 on mobile so it
+                fills whatever room is left below the heading; a fixed
+                md:h-96 on desktop) rather than growing this whole area
+                taller as the list gets longer — Copy/Done/mic now live
+                in the static bottom bar below instead, not inside this
+                scrollable region, so they're always reachable without
+                scrolling past a long list first. */}
+            {showIngredients ? (
+              <div className="flex h-full flex-col md:block md:h-auto">
+                <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
+                  Need to get
+                </h2>
+                {/* White note-card sitting on the page's cream background
+                    — only the actual list text lives on white. Genuinely
+                    editable: a plain textarea bound directly to
+                    needToGetText, so typing, fixing typos, adding your
+                    own items, or removing lines all just work like any
+                    normal text box. Checking/unchecking "Need to get" on
+                    a row surgically edits this same value (see
+                    addIngredientLine/removeIngredientLine) rather than
+                    overwriting it, so manual edits here survive a voice
+                    or click toggle. */}
+                <div className="flex min-h-0 flex-1 flex-col rounded-xl bg-white p-4 shadow-sm md:h-96 md:flex-none">
+                  <textarea
+                    value={needToGetText}
+                    onChange={(e) => setNeedToGetText(e.target.value)}
+                    placeholder={
+                      'Nothing on your list yet — mark an ingredient "Need to get," or just type your own here.'
+                    }
+                    className="min-h-0 flex-1 resize-none bg-transparent text-sm text-ink outline-none placeholder:text-muted"
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
+                  Steps
+                </h2>
+                {/* currentStep (not activeStepId) drives the highlight/auto-
+                    scroll — null in a gap, which StepList already handles by
+                    just not matching any item, no highlight, no scroll. */}
+                <StepList
+                  steps={steps}
+                  activeStepId={currentStep?.id ?? null}
+                  onSelect={playStep}
+                  doneSteps={doneSteps}
+                  onToggleDone={toggleStepDone}
+                />
+              </>
+            )}
           </div>
 
           {/* Mobile-only control bar, sitting right below the steps list —
-              padded for the iOS home-indicator safe area. */}
+              padded for the iOS home-indicator safe area. While the
+              ingredients panel is open, the normal playback controls
+              (back/Play/forward) don't apply, so this becomes a static
+              Copy/Done/mic row instead — the same static-bottom-area
+              relocation the mic button gets on desktop above, rather
+              than leaving it stranded alone among controls that no
+              longer make sense. */}
           <div className="shrink-0 border-t border-ink/10 bg-white pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 md:hidden">
-            <div className="flex items-center gap-2 px-3">
-              <button
-                onClick={handlePrevious}
-                disabled={activeIndex <= 0}
-                aria-label="Previous step"
-                className="rounded-full border border-ink/15 bg-white px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
-              >
-                ←
-              </button>
-              <button
-                onClick={handleTogglePlay}
-                className="flex-1 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white"
-              >
-                {isPlaying ? "Pause" : "Play"}
-              </button>
-              <button
-                onClick={handleNext}
-                disabled={activeIndex >= steps.length - 1}
-                aria-label="Next step"
-                className="rounded-full border border-ink/15 bg-white px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
-              >
-                →
-              </button>
-              <button
-                onClick={voice.toggle}
-                disabled={!voice.supported}
-                aria-label="Toggle voice control"
-                className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
-                  voice.listening ? "bg-red-600" : "bg-brand"
-                } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
-              >
-                🎙️
-              </button>
-            </div>
+            {showIngredients ? (
+              <div className="px-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopyList}
+                    disabled={!needToGetText.trim()}
+                    className="flex-1 rounded-full border border-ink/15 bg-white px-4 py-2 text-sm font-medium text-muted disabled:opacity-40"
+                  >
+                    📋 Copy
+                  </button>
+                  <button
+                    onClick={handleDoneWithIngredients}
+                    className="flex-1 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    Done
+                  </button>
+                  <button
+                    onClick={handleToggleVoice}
+                    disabled={!voice.supported}
+                    aria-label="Toggle voice control"
+                    className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
+                      voice.listening ? "bg-red-600" : "bg-brand"
+                    } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
+                  >
+                    🎙️
+                  </button>
+                </div>
+                {copyConfirmation && (
+                  <p role="status" className="mt-1.5 text-center text-xs text-brand-dark">
+                    Your list is copied. You can now paste it into a text,
+                    notes, or elsewhere.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3">
+                <button
+                  onClick={handlePrevious}
+                  disabled={activeIndex <= 0}
+                  aria-label="Previous step"
+                  className="rounded-full border border-ink/15 bg-white px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
+                >
+                  ←
+                </button>
+                <button
+                  onClick={handleTogglePlay}
+                  className="flex-1 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white"
+                >
+                  {isPlaying ? "Pause" : "Play"}
+                </button>
+                <button
+                  onClick={handleNext}
+                  disabled={activeIndex >= steps.length - 1}
+                  aria-label="Next step"
+                  className="rounded-full border border-ink/15 bg-white px-3 py-2 text-sm font-medium text-muted disabled:opacity-40"
+                >
+                  →
+                </button>
+                <button
+                  onClick={handleToggleVoice}
+                  disabled={!voice.supported}
+                  aria-label="Toggle voice control"
+                  className={`rounded-full px-3 py-2 text-sm font-medium text-white disabled:opacity-40 ${
+                    voice.listening ? "bg-red-600" : "bg-brand"
+                  } ${micShouldPulse ? "mic-orange-pulse" : ""}`}
+                >
+                  🎙️
+                </button>
+              </div>
+            )}
             {/* Intentionally left blank: Repeat/Loop/Ingredients used to
                 live here, right at the bottom edge — too far from a
                 resting thumb to reach comfortably. They've moved up to
