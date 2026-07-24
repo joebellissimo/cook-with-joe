@@ -832,7 +832,10 @@ export default function RecipePlayer({ recipe, onRead }) {
   // put rather than collapsing. Same reuse pattern as loopCheckbox above:
   // one element, mounted in two places, always in sync.
   const stepControlsRow = (
-    <div className="flex items-center justify-center gap-4 text-xs text-muted">
+    // flex-wrap as a safety margin for the narrower right-hand column in
+    // phone landscape (~320px, vs. portrait's near-full-width row) — a
+    // no-op at portrait widths, where this already fits on one line.
+    <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted">
       <button onClick={handleRepeat} className="flex items-center gap-1">
         ↻ Repeat
       </button>
@@ -869,9 +872,25 @@ export default function RecipePlayer({ recipe, onRead }) {
     // position) is what actually holds this to the viewport reliably under
     // iOS Safari's dynamic toolbar. At md and up this reverts to the
     // original static, side-by-side grid layout.
-    <div className="flex h-dvh flex-col overflow-hidden bg-cream md:mx-auto md:block md:h-auto md:max-w-5xl md:overflow-visible md:px-4 md:py-6">
-      {/* Title row — md and up only; on mobile the title is overlaid on the video instead. */}
-      <div className="hidden md:mb-4 md:flex md:items-start md:justify-between md:gap-3">
+    //
+    // Phone landscape gets this same lock reinstated, even past md's
+    // 768px width threshold — most current phones (iPhone 13 and later,
+    // most Android flagships) are wider than 768px in landscape, so
+    // without this override they'd fall through to the "desktop" branch
+    // below (unlocked, page-scrollable) purely because md: only checks
+    // width, not orientation. landscape:max-[950px]: (phone-landscape:
+    // orientation landscape AND width <= 950px, comfortably under the
+    // ~1024px width where the smallest common tablets start) reinstates
+    // every md: override this component makes, using ! (Tailwind v4's
+    // trailing-bang important modifier) since a wide-landscape phone can
+    // match both the plain md: query and this one simultaneously — the
+    // !-flagged rule always wins regardless of which comes first in the
+    // generated stylesheet.
+    <div className="flex h-dvh flex-col overflow-hidden bg-cream landscape:max-[950px]:flex! landscape:max-[950px]:h-dvh! landscape:max-[950px]:overflow-hidden! landscape:max-[950px]:mx-0! landscape:max-[950px]:max-w-none! landscape:max-[950px]:px-0! landscape:max-[950px]:py-0! md:mx-auto md:block md:h-auto md:max-w-5xl md:overflow-visible md:px-4 md:py-6">
+      {/* Title row — md and up only; on mobile (incl. phone landscape) the
+          title is overlaid on the video instead, via the mobile-only
+          overlay further down. */}
+      <div className="hidden landscape:max-[950px]:hidden! md:mb-4 md:flex md:items-start md:justify-between md:gap-3">
         <div>
           <p className="eyebrow text-[11px]">
             {recipe.category}
@@ -892,16 +911,29 @@ export default function RecipePlayer({ recipe, onRead }) {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col md:grid md:flex-none md:grid-cols-3 md:gap-6">
-        {/* Video section — 2/3 of the viewport height on mobile. */}
-        <div className="flex min-h-0 flex-[2] flex-col md:col-span-2 md:block md:flex-none">
-          <div className="relative min-h-0 flex-1 overflow-hidden bg-black shadow md:flex md:h-auto md:flex-none md:items-center md:justify-center md:rounded-xl">
+      {/* Portrait mobile: video (2/3 height) stacked above steps (1/3).
+          Phone landscape: reflows to a 2-column grid instead — video
+          fills a full-height left column, the repeat/loop/ingredients
+          row and the steps/need-to-get area stack in a fixed-width right
+          column — a short landscape viewport doesn't have room for the
+          portrait proportions, and this is the same side-by-side shape
+          desktop already uses (md:grid-cols-3), just locked to the
+          viewport instead of letting the page scroll. Video is the only
+          child given an explicit row-span (2); the other two children
+          land in the right column via plain grid auto-placement — row 1
+          then row 2 — with no explicit placement needed on them. */}
+      <div className="flex min-h-0 flex-1 flex-col landscape:max-[950px]:grid! landscape:max-[950px]:grid-cols-[1fr_20rem]! landscape:max-[950px]:grid-rows-[auto_minmax(0,1fr)]! landscape:max-[950px]:gap-3! md:grid md:flex-none md:grid-cols-3 md:gap-6">
+        {/* Video section — 2/3 of the viewport height on mobile portrait;
+            full-height left column in phone landscape (see above). */}
+        <div className="flex min-h-0 flex-[2] flex-col landscape:max-[950px]:col-span-1! landscape:max-[950px]:row-span-2! landscape:max-[950px]:flex! landscape:max-[950px]:flex-col! md:col-span-2 md:block md:flex-none">
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-black shadow landscape:max-[950px]:flex-1! landscape:max-[950px]:rounded-none! md:flex md:h-auto md:flex-none md:items-center md:justify-center md:rounded-xl">
             {/* Mobile-only title/category overlay, anchored to the top edge
                 of the video instead of centered like the step-finished
                 overlay below — small text, non-blocking of the frame. The
                 site header is hidden on this page below md, so this also
-                carries a back link home. */}
-            <div className="absolute inset-x-0 top-0 z-10 flex items-start gap-2 bg-gradient-to-b from-black/70 via-black/20 to-transparent px-3 pb-6 pt-2.5 md:hidden">
+                carries a back link home. Stays visible in phone landscape
+                too, even past md's width threshold. */}
+            <div className="absolute inset-x-0 top-0 z-10 flex items-start gap-2 bg-gradient-to-b from-black/70 via-black/20 to-transparent px-3 pb-6 pt-2.5 landscape:max-[950px]:flex! md:hidden">
               <Link
                 href="/"
                 aria-label="Back to recipes"
@@ -922,14 +954,16 @@ export default function RecipePlayer({ recipe, onRead }) {
               ref={videoRef}
               // Mobile: full-bleed, object-cover crops to fill the frame —
               // a deliberate, different choice for the locked full-screen
-              // phone view. Desktop/tablet: the video isn't forced into a
-              // 16:9 box (imported recipes can be portrait or any other
-              // shape) — it renders at its own aspect ratio, capped by the
-              // column's width and a 70vh height, with object-contain so
-              // the full frame is always visible. The wrapper's black
-              // background shows through as letterboxing wherever the
-              // video doesn't fill that box.
-              className="h-full w-full object-cover md:h-auto md:w-auto md:max-h-[70vh] md:max-w-full md:object-contain"
+              // phone view. Same treatment in phone landscape (full-bleed
+              // fill of its left column) rather than desktop's letterboxed
+              // "video card" look. Desktop/tablet: the video isn't forced
+              // into a 16:9 box (imported recipes can be portrait or any
+              // other shape) — it renders at its own aspect ratio, capped
+              // by the column's width and a 70vh height, with
+              // object-contain so the full frame is always visible. The
+              // wrapper's black background shows through as letterboxing
+              // wherever the video doesn't fill that box.
+              className="h-full w-full object-cover landscape:max-[950px]:h-full! landscape:max-[950px]:w-full! landscape:max-[950px]:max-h-none! landscape:max-[950px]:object-cover! md:h-auto md:w-auto md:max-h-[70vh] md:max-w-full md:object-contain"
               src={recipe.video}
               onTimeUpdate={handleTimeUpdate}
               onPlay={() => setIsPlaying(true)}
@@ -1166,9 +1200,10 @@ export default function RecipePlayer({ recipe, onRead }) {
             )}
           </div>
 
-          {/* Inline controls row + voice hints — md and up only; mobile has
-              its own fixed bottom control bar instead. */}
-          <div className="hidden md:block">
+          {/* Inline controls row + voice hints — md and up only, EXCLUDING
+              phone landscape, which keeps its own fixed bottom control bar
+              instead (see below) even past md's width threshold. */}
+          <div className="hidden landscape:max-[950px]:hidden! md:block">
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {/* Previous/Play/Repeat/Next/Loop/Ingredients don't apply
                   while reviewing ingredients — replaced with Copy
@@ -1288,24 +1323,31 @@ export default function RecipePlayer({ recipe, onRead }) {
         </div>
 
         {/* Repeat / Loop this step / Ingredients — mobile only, sitting
-            right between the video and the scrollable steps list instead
-            of the very bottom of the screen, which was too far from a
-            resting thumb to reach comfortably. Desktop already has its own
-            repeat/loop controls in the inline row above (no separate
-            ingredients toggle there), so this is md:hidden. */}
-        <div className="shrink-0 border-y border-ink/10 bg-white px-3 py-2 md:hidden">
+            right between the video and the scrollable steps list on
+            portrait; the top of the right-hand column in phone landscape
+            (stays visible there even past md's width threshold — the
+            landscape grid above auto-places this as the first item in
+            column 2, since only the video section has an explicit
+            row-span). Desktop already has its own repeat/loop controls in
+            the inline row above (no separate ingredients toggle there),
+            so this is md:hidden. */}
+        <div className="shrink-0 border-y border-ink/10 bg-white px-3 py-2 landscape:max-[950px]:block! md:hidden">
           {showIngredients ? ingredientsActiveNotice : stepControlsRow}
         </div>
 
         {/* Bottom third — steps list + control bar grouped together so they
-            share the remaining 1/3 of viewport height on mobile. At md and
-            up this wrapper carries no layout of its own; the steps list
-            reverts to being a normal 3rd grid column and the control bar
-            (md:hidden) takes no space. */}
+            share the remaining 1/3 of viewport height on mobile portrait.
+            In phone landscape this becomes the bottom half of the
+            right-hand column instead (grid auto-placement, see the grid
+            container comment above) — no classes needed on this wrapper
+            itself either way, it's already flex-col unconditionally. At
+            md and up (desktop) the steps list reverts to being a normal
+            3rd grid column and the control bar (md:hidden) takes no
+            space. */}
         <div className="flex min-h-0 flex-1 flex-col">
           <div
             ref={stepsListRef}
-            className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:flex-none md:overflow-visible md:px-0 md:pt-0"
+            className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 landscape:max-[950px]:flex-1! landscape:max-[950px]:overflow-y-auto! landscape:max-[950px]:px-4! landscape:max-[950px]:pt-3! md:flex-none md:overflow-visible md:px-0 md:pt-0"
           >
             {/* This area doubles as the "need to get" view while the
                 ingredients panel is open — same ref, same voice-driven
@@ -1320,7 +1362,7 @@ export default function RecipePlayer({ recipe, onRead }) {
                 scrollable region, so they're always reachable without
                 scrolling past a long list first. */}
             {showIngredients ? (
-              <div className="flex h-full flex-col md:block md:h-auto">
+              <div className="flex h-full flex-col landscape:max-[950px]:flex! landscape:max-[950px]:h-full! landscape:max-[950px]:flex-col! md:block md:h-auto">
                 <h2 className="eyebrow heading-rule mb-4 hidden text-[11px] md:inline-block">
                   Need to get
                 </h2>
@@ -1333,8 +1375,11 @@ export default function RecipePlayer({ recipe, onRead }) {
                     a row surgically edits this same value (see
                     addIngredientLine/removeIngredientLine) rather than
                     overwriting it, so manual edits here survive a voice
-                    or click toggle. */}
-                <div className="flex min-h-0 flex-1 flex-col rounded-xl bg-white p-4 shadow-sm md:h-96 md:flex-none">
+                    or click toggle. Fills available height in both
+                    portrait and phone landscape (flex-1); only desktop
+                    gets a fixed height, since only desktop has a page
+                    that can scroll around it. */}
+                <div className="flex min-h-0 flex-1 flex-col rounded-xl bg-white p-4 shadow-sm landscape:max-[950px]:flex-1! landscape:max-[950px]:h-auto! md:h-96 md:flex-none">
                   <textarea
                     value={needToGetText}
                     onChange={(e) => setNeedToGetText(e.target.value)}
@@ -1365,14 +1410,18 @@ export default function RecipePlayer({ recipe, onRead }) {
           </div>
 
           {/* Mobile-only control bar, sitting right below the steps list —
-              padded for the iOS home-indicator safe area. While the
-              ingredients panel is open, the normal playback controls
-              (back/Play/forward) don't apply, so this becomes a static
-              Copy/Done/mic row instead — the same static-bottom-area
-              relocation the mic button gets on desktop above, rather
-              than leaving it stranded alone among controls that no
-              longer make sense. */}
-          <div className="shrink-0 border-t border-ink/10 bg-white pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 md:hidden">
+              padded for the iOS home-indicator safe area. Stays visible in
+              phone landscape too, even past md's width threshold — this is
+              how Previous/Play/Next/mic (or Copy/Done/mic while reviewing
+              ingredients) stay reachable there instead of only the
+              desktop's inline row (which is deliberately hidden in phone
+              landscape — see above). While the ingredients panel is open,
+              the normal playback controls (back/Play/forward) don't
+              apply, so this becomes a static Copy/Done/mic row instead —
+              the same static-bottom-area relocation the mic button gets
+              on desktop above, rather than leaving it stranded alone
+              among controls that no longer make sense. */}
+          <div className="shrink-0 border-t border-ink/10 bg-white pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 landscape:max-[950px]:block! md:hidden">
             {showIngredients ? (
               <div className="px-3">
                 <div className="flex items-center gap-2">
