@@ -290,6 +290,12 @@ export default function RecipePlayer({ recipe, onRead }) {
   // action, per this round's design intent.
   const setIngredientHave = useCallback(
     (index) => {
+      // Belt-and-suspenders resume attempt on this genuine gesture, before
+      // the early-return below — otherwise the "already selected" no-op
+      // case would skip any resume attempt entirely, since
+      // playConfirmationChime() (which also resumes) never runs on that
+      // path either. See lib/sound.js for the primary fix.
+      unlockAudioContext();
       if (!neededIngredients.has(index)) return;
       setNeededIngredients((prev) => {
         const next = new Set(prev);
@@ -307,6 +313,8 @@ export default function RecipePlayer({ recipe, onRead }) {
   // setIngredientHave above.
   const setIngredientNeed = useCallback(
     (index) => {
+      // Same belt-and-suspenders resume attempt as setIngredientHave above.
+      unlockAudioContext();
       if (neededIngredients.has(index)) return;
       setNeededIngredients((prev) => new Set(prev).add(index));
       const ingredientText = recipe.ingredients[index];
@@ -410,6 +418,10 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, []);
 
   const handleCopyList = useCallback(() => {
+    // Resume attempt on this real gesture, synchronously here (not inside
+    // the .then() below) — the clipboard write is async, so this is the
+    // last point still unambiguously within the click's call stack.
+    unlockAudioContext();
     // Copies exactly what's in the box — including any manual edits —
     // not a regenerated version.
     navigator.clipboard
@@ -433,6 +445,11 @@ export default function RecipePlayer({ recipe, onRead }) {
   }, [needToGetText]);
 
   const handleDoneWithIngredients = useCallback(() => {
+    // This gesture never triggers a chime itself, so without an explicit
+    // resume attempt here it would have no chance to recover a
+    // suspended/closed AudioContext before the next voice-triggered sound
+    // needs it.
+    unlockAudioContext();
     setShowIngredients(false);
   }, []);
 
@@ -1098,17 +1115,14 @@ export default function RecipePlayer({ recipe, onRead }) {
                     itself already shows the state clearly, and "have" is
                     now the default for everything rather than a
                     call-out-worthy exception. */}
-                {/* "Need to get" needs to visibly outweigh "I have" — at
-                    this small an uppercase/tracked size, font-weight
-                    alone (bold vs. regular) reads as barely different to
-                    the eye, so size and color reinforce it too: larger,
-                    bold, and full-contrast ink instead of the same muted
-                    grey both used before. */}
+                {/* Emphasis lives on each row's own ingredient text
+                    (isNeed below), not the header — the two column
+                    headers read identically to each other. */}
                 <div className="grid grid-cols-[4.5rem_4.5rem_1fr] items-center gap-x-1.5 pb-1">
                   <span className="text-center text-[10px] font-normal uppercase leading-tight tracking-wide text-muted">
                     I have
                   </span>
-                  <span className="text-center text-[11px] font-bold uppercase leading-tight tracking-wide text-ink">
+                  <span className="text-center text-[10px] font-normal uppercase leading-tight tracking-wide text-muted">
                     Need to get
                   </span>
                   <span />
@@ -1141,7 +1155,9 @@ export default function RecipePlayer({ recipe, onRead }) {
                             className="accent-brand"
                           />
                         </span>
-                        <span className="text-ink">{ingredient}</span>
+                        <span className={isNeed ? "font-bold text-ink" : "text-ink"}>
+                          {ingredient}
+                        </span>
                       </li>
                     );
                   })}
