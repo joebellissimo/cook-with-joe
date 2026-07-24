@@ -1,6 +1,6 @@
 # Cook With Joe — Development Status Log
 
-Last updated: 2026-07-23 (session 8)
+Last updated: 2026-07-23 (session 9)
 
 ## Architecture (confirmed working)
 
@@ -15,15 +15,18 @@ Last updated: 2026-07-23 (session 8)
 - Voice control logic lives in `hooks/useVoiceCommands.js` (SpeechRecognition
   wrapper) and `lib/voiceCommands.js` (phrase matching).
 - Recipe player UI lives in `components/RecipePlayer.jsx`.
-- **Vercel preview deployments (`*.vercel.app` branch URLs) have Deployment
-  Protection (an SSO wall) enabled** — any unauthenticated automated request
-  (curl, a bare fetch, etc.) gets redirected to a Vercel login, no exceptions.
-  Discovered 2026-07-22 while debugging the Start Cooking scroll bug (see
-  below). **Production** (`cook-with-joe.vercel.app`) is NOT behind this
-  wall — confirmed via plain curl. Matters for any future automated testing
-  against preview URLs: a real authenticated browser session (or a Protection
-  Bypass for Automation secret, under Project Settings → Deployment
-  Protection, not yet set up) is required to reach them programmatically.
+- **Vercel Deployment Protection is disabled at the project level** (changed
+  2026-07-23) — both preview and production URLs are reachable by any
+  unauthenticated automated tool (curl, a bare fetch, etc.), no SSO wall,
+  no exceptions needed. Confirmed via plain curl against a live preview
+  URL post-change: full page content returns directly (HTTP 200), no
+  redirect to a Vercel login. Previously (discovered 2026-07-22 while
+  debugging the Start Cooking scroll bug — see below) preview
+  deployments required an authenticated browser session or a Protection
+  Bypass for Automation secret to reach programmatically; that
+  restriction no longer applies. The historical detail in the Start
+  Cooking scroll bug section below still accurately describes what was
+  true *at the time* of that investigation — not current state.
 - **Branch pushes don't always trigger a Vercel preview build** — discovered
   2026-07-23 shipping the welcome overlay: pushing `welcome-overlay-fixes`
   produced no deployment at all (confirmed via both the Vercel API and
@@ -150,7 +153,52 @@ with no divergence.
       "show"/"open." Broadened it, same pattern as the earlier "show me
       the ingredients list" fix (entry 10 above).
     - Merged to `main` and pushed 2026-07-23.
-13. **New home page — full replacement, merged and LIVE in production
+13. **Ingredients "Need to get" list** — replaces the old plain ingredient
+    checkmark with a full review/shopping-list workflow, live in
+    production. Shipped across six rounds (`ingredients-need-to-get` →
+    `-polish` → `-polish-2` → `-polish-3` → `-polish-4` →
+    `sound-cues-and-header-fix`), each verified live before merging
+    (including on a real iPhone for the audio-lifecycle fix):
+    - **Per-ingredient "I have"/"Need to get"** — a mutually-exclusive
+      radio pair per row, defaulting to "I have" (most people already
+      have most things — they're only flagging exceptions). Both
+      click- and voice-driven: "I have `<ingredient>`"/"I need
+      `<ingredient>`" reuse the existing fuzzy ingredient matcher in
+      `lib/voiceCommands.js`, same approach as step-name matching.
+    - **Disambiguation popup** for "I need `<word>`" when it fuzzy-matches
+      more than one real ingredient (e.g. "garlic" against both
+      "garlic" and "garlic powder") — multi-select checkboxes, an
+      explicit "Add to list" confirm, no silent guessing and no partial
+      commit.
+    - **Editable, independently-scrollable "need to get" list** — a
+      freeform textarea (not a derived read-only list), so manual
+      edits/notes survive later voice- or click-driven adds/removes via
+      exact-line matching; bounded height with its own scroll instead
+      of growing the whole panel as the list gets longer.
+    - **Copy to clipboard** via the Clipboard API, with a fading
+      confirmation message.
+    - **Synthesized confirmation-chime sound cues** (Web Audio API, no
+      audio files) on selecting I have/Need to get, a successful copy,
+      and marking a step done. Includes mobile-Safari AudioContext
+      lifecycle handling: recovers from both `suspended` and fully
+      `closed` states after the phone locks/backgrounds (a
+      `visibilitychange` listener plus resume-before-play in
+      `lib/sound.js`, plus explicit resume attempts in every
+      genuine-gesture click handler) — confirmed working live on a real
+      iPhone after an actual lock/unlock cycle, not just simulated.
+    - **Two distinct voice bugs found and fixed during live testing:**
+      the ingredients panel had the *same* "general fuzzy matcher leaks
+      through a modal" bug already fixed once for the welcome overlay
+      (entry 12 above) — generalized this time into a shared
+      `matchScopedVoiceCommand` helper reused by both instead of a
+      second one-off patch. Separately, two "I need `<item>`" utterances
+      spoken close together could land in the same SpeechRecognition
+      result (see "Voice latency" below) and get concatenated, causing
+      the merged phrase to spuriously trigger the disambiguation popup
+      — fixed with a lookahead in the ingredient voice patterns so each
+      utterance resolves independently regardless of timing.
+    - Merged to `main` and pushed to production 2026-07-23.
+14. **New home page — full replacement, merged and LIVE in production
     2026-07-22** (`home-page-v2` branch, merged to `main` at `c6d2956` via
     clean fast-forward from `34a3b74`). Replaces the old plain recipe-menu
     home page entirely. See the full session-5 write-up below for how this
@@ -509,10 +557,17 @@ enforcement, migration path) — still not started. Open decisions:
    voice-routing bug fix, a polish pass, and a review-ingredients voice
    regression fix, each verified live before merging. See entry 12 under
    "Features shipped and confirmed working in production" above.
-4. Optional cleanup: add `BLOB_READ_WRITE_TOKEN` to `.env.local` for local
+4. ~~Build the ingredients "Need to get" list~~ **Done 2026-07-23** —
+   per-ingredient I have/Need to get (voice + click), disambiguation
+   popup, editable/scrollable list, clipboard copy, and confirmation-
+   chime sound cues with mobile-Safari AudioContext lifecycle handling,
+   each round verified live (including on a real iPhone) before
+   merging. See entry 13 under "Features shipped and confirmed working
+   in production" above.
+5. Optional cleanup: add `BLOB_READ_WRITE_TOKEN` to `.env.local` for local
    dev, and/or fix the missing `.catch()` in `app/page.js`.
-5. Decide whether to pursue Chrome's on-device speech recognition.
-6. Decide Neon vs. Supabase and Auth.js vs. Clerk for Phase 1, then work
+6. Decide whether to pursue Chrome's on-device speech recognition.
+7. Decide Neon vs. Supabase and Auth.js vs. Clerk for Phase 1, then work
    through the signup checklist and kick off implementation.
-7. Revisit the bake-timer prompt (feature backlog item 2 above) now that
+8. Revisit the bake-timer prompt (feature backlog item 2 above) now that
    "mark step done" has shipped.
